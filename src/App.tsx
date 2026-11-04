@@ -212,6 +212,28 @@ export function App() {
     setMatchResult({ ...matchResult, matched: updatedMatched, totalDaOrdinare: newTotal });
   };
 
+  // Esclusione o inclusione di un gruppo di ID (es. per collana)
+  const handleBulkExclude = (ids: string[], escluso: boolean) => {
+    if (!matchResult) return;
+    const idSet = new Set(ids);
+    const updatedMatched = matchResult.matched.map(item => {
+      if (idSet.has(item.id)) {
+        return { ...item, escluso };
+      }
+      return item;
+    });
+
+    const newTotalDaOrdinare = updatedMatched
+      .filter(m => !m.escluso)
+      .reduce((acc, m) => acc + m.qtaOrdine, 0);
+
+    setMatchResult({
+      ...matchResult,
+      matched: updatedMatched,
+      totalDaOrdinare: newTotalDaOrdinare
+    });
+  };
+
   // Escludi tutti (QTA = 0)
   const handleDeselectAll = () => {
     if (!matchResult) return;
@@ -353,6 +375,7 @@ export function App() {
                 items={matchResult.matched}
                 onToggleExclude={handleToggleExclude}
                 onUpdateQuantity={handleUpdateQuantity}
+                onBulkExclude={handleBulkExclude}
                 searchQuery={searchQuery}
               />
             )}
