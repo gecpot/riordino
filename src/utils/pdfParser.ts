@@ -1,8 +1,10 @@
 import * as pdfjsLib from 'pdfjs-dist';
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { PdfRow } from '../types';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+// Configurazione Worker PDF.js da CDN ad altissima affidabilità e compatibilità browser
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+}
 
 const PAROLE_ESCLUSIONE = [
   'DATA DI STAMPA', 'VENDITE DETTAGLIO', 'SELEZIONE:', 'MAGAZZINO',
@@ -26,7 +28,10 @@ export async function parsePdfVenduto(fileOrBuffer: File | ArrayBuffer): Promise
     ? await fileOrBuffer.arrayBuffer() 
     : fileOrBuffer;
 
-  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const loadingTask = pdfjsLib.getDocument({
+    data: new Uint8Array(arrayBuffer),
+    isEvalSupported: false
+  });
   const pdfDoc = await loadingTask.promise;
   const righeEstratte: PdfRow[] = [];
 
@@ -54,7 +59,7 @@ export async function parsePdfVenduto(fileOrBuffer: File | ArrayBuffer): Promise
       matchedLine.pieces.push(piece);
     }
 
-    // Ordina le righe dall'alto al basso (in PDF Y scende verso il basso della pagina)
+    // Ordina le righe dall'alto al basso
     lines.sort((a, b) => b.y - a.y);
 
     for (const line of lines) {
@@ -66,68 +71,47 @@ export async function parsePdfVenduto(fileOrBuffer: File | ArrayBuffer): Promise
       if (PAROLE_ESCLUSIONE.some(h => fullTextUpper.includes(h))) continue;
       if (fullText.startsWith('*Errore')) continue;
 
-      // Colonna sinistra (x < 100): Collana/Testata
-      const pLeft = parts.filter(p => p.x < 100);
-      let collana = pLeft.map(p => p.text).join(' ').trim();
+      // Coordinate delle colonne nel PDF cassa Trend:
+      // 1. Collana: x < 100
+      const pColl = parts.filter(p => p.x < 100);
+      // 2. Codice: 100 <= x < 180
+      const pCod = parts.filter(p => p.x >= 100 && p.x < 180);
+      // 3. Titolo: 180 <= x < 450
+      const pTit = parts.filter(p => p.x >= 180 && p.x < 450);
+      // 4. Colore/Variante: 450 <= x < 560
+      const pCol = parts.filter(p => p.x >= 450 && p.x < 560);
+      // 5. Misura/Taglia: 560 <= x < 630
+      const pMis = parts.filter(p => p.x >= 560 && p.x < 630);
+      // 6. Vendite: 630 <= x < 695
+      const pVend = parts.filter(p => p.x >= 630 && p.x < 695);
+      // 7. Resi: 695 <= x < 740
+      const pResi = parts.filter(p => p.x >= 695 && p.x < 740);
+      // 8. Prezzo Vendita: 740 <= x < 790
+      const pPrVend = parts.filter(p => p.x >= 740 && p.x < 790);
+      // 9. Prezzo Fatturare: x >= 790
+      const pPrFatt = parts.filter(p => p.x >= 790);
 
-      // Colonna centrale (100 <= x < 180): Codice, varianti, vendite, resi, prezzo
-      const pMid = parts.filter(p => p.x >= 100 && p.x < 180);
+      const codice = pCod.map(p => p.text).join(' ').trim();
+      if (!codice) continue;
 
-      // Colonna titolo (180 <= x < 600)
-      const pTit = parts.filter(p => p.x >= 180 && p.x < 600);
-      const titolo = pTit.map(p => p.text).join(' ').trim();
+      let collana = pColl.map(p => p.text).join(' ').trim();
+      let titolo = pTit.map(p => p.text).join(' ').trim();
+      let colore = pCol.map(p => p.text).join(' ').trim();
+      let misura = pMis.map(p => p.text).join(' ').trim();
+      const vendStr = pVend.map(p => p.text).join('').replace(/,/g, '');
+      const resiStr = pResi.map(p => p.text).join('').replace(/,/g, '');
+      const vendite = parseInt(vendStr, 10) || 0;
+      const resi = parseInt(resiStr, 10) || 0;
+      const prezzoVend = pPrVend.map(p => p.text).join('').trim();
+      const prezzoFatt = pPrFatt.map(p => p.text).join('').trim();
 
-      // Colonna prezzi a destra (x >= 600)
-      const pRight = parts.filter(p => p.x >= 600);
-      let prezzoFatt = '';
-      for (const pr of pRight) {
-        if (/^[\d,]+$/.test(pr.text)) {
-          if (!prezzoFatt) prezzoFatt = pr.text;
-        }
-      }
-
-      if (pMid.length === 0) continue;
-
-      const midText = pMid.map(p => p.text).join(' ').trim();
-
-      // Pattern: <codice> [variante/colore] <vendite> <resi> <prezzo_vendita> [collana_accodata]
-      const match = midText.match(/^(\S+)(?:\s+(.*?))?\s+(\d+)\s+(\d+)\s+([\d,]+)\s*(.*)$/);
-      if (!match) continue;
-
-      const codice = match[1].trim();
-      const optExtra = (match[2] || '').trim();
-      const vendite = parseInt(match[3], 10);
-      const resi = parseInt(match[4], 10);
-      const prezzoVend = match[5].trim();
-      const trailColl = (match[6] || '').trim();
-
-      if (trailColl) {
-        collana = trailColl;
-      }
-
-      let colore = '';
-      let misura = '';
-
-      if (optExtra) {
-        const partsExtra = optExtra.split(/\s+/);
-        const lastPart = partsExtra[partsExtra.length - 1].toUpperCase();
-        if (partsExtra.length >= 2 && TAGLIE_VALIDE.has(lastPart)) {
-          colore = partsExtra.slice(0, -1).join(' ');
-          misura = lastPart;
-        } else if (partsExtra.length === 1 && TAGLIE_VALIDE.has(partsExtra[0].toUpperCase())) {
-          misura = partsExtra[0].toUpperCase();
-          colore = '';
-        } else {
-          colore = optExtra;
-        }
-      }
-
+      // Normalizzazione taglia se contenuta nel campo colore
       if (!misura && colore) {
         const cParts = colore.split(/\s+/);
         const lastC = cParts[cParts.length - 1].toUpperCase();
-        if (cParts.length >= 2 && TAGLIE_VALIDE.has(lastC)) {
+        if (TAGLIE_VALIDE.has(lastC)) {
           misura = lastC;
-          colore = cParts.slice(0, -1).join(' ');
+          colore = cParts.slice(0, -1).join(' ').trim();
         }
       }
 
