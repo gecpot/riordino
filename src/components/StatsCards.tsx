@@ -1,5 +1,5 @@
 import React from 'react';
-import { PackageCheck, CheckSquare, AlertTriangle, Layers, Euro } from 'lucide-react';
+import { PackageCheck, CheckSquare, MailPlus, Layers } from 'lucide-react';
 import { MatchResult } from '../types';
 
 interface StatsCardsProps {
@@ -9,106 +9,116 @@ interface StatsCardsProps {
 }
 
 export const StatsCards: React.FC<StatsCardsProps> = ({ result, activeTab, onTabChange }) => {
-  const activeMatchedCount = result.matched.filter(m => !m.escluso).length;
-  const excludedCount = result.matched.filter(m => m.escluso).length;
+  const activeMatchedCount = result.matched.filter(m => !m.escluso && m.qtaOrdine > 0).length;
+  const excludedMatchedCount = result.matched.filter(m => m.escluso || m.qtaOrdine === 0).length;
 
-  // Calcolo valore totale stimato di copertina
-  const totalValore = result.matched
-    .filter(m => !m.escluso)
-    .reduce((acc, m) => {
-      const p = parseFloat((m.prezzo || '').replace(',', '.'));
-      return acc + (isNaN(p) ? 0 : p * m.qtaOrdine);
-    }, 0);
+  const activeUnmatchedCount = result.unmatched.filter(u => !u.escluso && u.qtaOrdine > 0).length;
+  const excludedUnmatchedCount = result.unmatched.filter(u => u.escluso || u.qtaOrdine === 0).length;
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      {/* 1. COPIE DA ORDINARE */}
-      <div 
+      {/* 1. COPIE DA ORDINARE CSV SATO */}
+      <div
         onClick={() => onTabChange('matched')}
         className={`p-4 rounded-xl border transition-all cursor-pointer ${
-          activeTab === 'matched' 
-            ? 'bg-emerald-500 text-white border-emerald-600 shadow-md shadow-emerald-500/20' 
+          activeTab === 'matched'
+            ? 'bg-emerald-600 text-white border-emerald-700 shadow-md shadow-emerald-500/20'
             : 'bg-white border-slate-200 hover:border-emerald-300 hover:shadow-sm'
         }`}
       >
         <div className="flex items-center justify-between">
-          <span className={`text-xs font-semibold uppercase tracking-wider ${activeTab === 'matched' ? 'text-emerald-100' : 'text-slate-500'}`}>
-            Copie da Ordinare
+          <span
+            className={`text-xs font-semibold uppercase tracking-wider ${
+              activeTab === 'matched' ? 'text-emerald-100' : 'text-slate-500'
+            }`}
+          >
+            Copie Ordine CSV
           </span>
-          <PackageCheck className={`w-5 h-5 ${activeTab === 'matched' ? 'text-emerald-100' : 'text-emerald-600'}`} />
+          <PackageCheck
+            className={`w-5 h-5 ${activeTab === 'matched' ? 'text-emerald-100' : 'text-emerald-600'}`}
+          />
         </div>
-        <div className="mt-2 text-3xl font-extrabold tracking-tight">
-          {result.totalDaOrdinare}
-        </div>
+        <div className="mt-2 text-3xl font-extrabold tracking-tight">{result.totalDaOrdinare}</div>
         <p className={`text-xs mt-1 ${activeTab === 'matched' ? 'text-emerald-100' : 'text-slate-500'}`}>
-          {activeMatchedCount} titoli attivi {excludedCount > 0 && `(${excludedCount} esclusi)`}
+          {activeMatchedCount} titoli attivi {excludedMatchedCount > 0 && `(${excludedMatchedCount} esclusi)`}
         </p>
       </div>
 
-      {/* 2. TITOLI MATCHATI */}
-      <div 
+      {/* 2. TITOLI MATCHATI CATALOGO CSV */}
+      <div
         onClick={() => onTabChange('matched')}
         className={`p-4 rounded-xl border transition-all cursor-pointer ${
-          activeTab === 'matched' 
-            ? 'bg-white border-blue-500 shadow-sm' 
+          activeTab === 'matched'
+            ? 'bg-white border-emerald-500 shadow-sm'
             : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm'
         }`}
       >
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Titoli Bonelli Sato
+            Titoli a Catalogo CSV
           </span>
           <CheckSquare className="w-5 h-5 text-blue-600" />
         </div>
         <div className="mt-2 text-3xl font-extrabold text-slate-900 tracking-tight">
           {result.matched.length}
         </div>
-        <p className="text-xs text-slate-500 mt-1">
-          100% precisione catalogo
-        </p>
+        <p className="text-xs text-slate-500 mt-1">Pronti per Sato.csv</p>
       </div>
 
-      {/* 3. NON A CATALOGO / ESAURITI */}
-      <div 
+      {/* 3. ORDINE VIA MAIL (NON A CATALOGO CSV - CODICI DD01, TE01, ECC.) */}
+      <div
         onClick={() => onTabChange('unmatched')}
         className={`p-4 rounded-xl border transition-all cursor-pointer ${
-          activeTab === 'unmatched' 
-            ? 'bg-amber-500 text-white border-amber-600 shadow-md shadow-amber-500/20' 
+          activeTab === 'unmatched'
+            ? 'bg-amber-500 text-white border-amber-600 shadow-md shadow-amber-500/20'
             : 'bg-white border-slate-200 hover:border-amber-300 hover:shadow-sm'
         }`}
       >
         <div className="flex items-center justify-between">
-          <span className={`text-xs font-semibold uppercase tracking-wider ${activeTab === 'unmatched' ? 'text-amber-100' : 'text-slate-500'}`}>
-            Non a Catalogo / Esauriti
+          <span
+            className={`text-xs font-semibold uppercase tracking-wider ${
+              activeTab === 'unmatched' ? 'text-amber-100' : 'text-slate-500'
+            }`}
+          >
+            Ordine Mail (Codici)
           </span>
-          <AlertTriangle className={`w-5 h-5 ${activeTab === 'unmatched' ? 'text-amber-100' : 'text-amber-600'}`} />
+          <MailPlus
+            className={`w-5 h-5 ${activeTab === 'unmatched' ? 'text-amber-100' : 'text-amber-600'}`}
+          />
         </div>
-        <div className="mt-2 text-3xl font-extrabold tracking-tight">
-          {result.unmatched.length}
+        <div className="mt-2 flex items-baseline space-x-2">
+          <span className="text-3xl font-extrabold tracking-tight">{result.totalDaOrdinareMail}</span>
+          <span className={`text-xs font-semibold ${activeTab === 'unmatched' ? 'text-amber-100' : 'text-slate-500'}`}>
+            copie ({activeUnmatchedCount} titoli)
+          </span>
         </div>
         <p className={`text-xs mt-1 ${activeTab === 'unmatched' ? 'text-amber-100' : 'text-slate-500'}`}>
-          Salvati nel report TXT
+          {result.unmatched.length} totali fuori CSV {excludedUnmatchedCount > 0 && `(${excludedUnmatchedCount} esclusi)`}
         </p>
       </div>
 
       {/* 4. PANINI / ALTRI */}
-      <div 
+      <div
         onClick={() => onTabChange('panini')}
         className={`p-4 rounded-xl border transition-all cursor-pointer ${
-          activeTab === 'panini' 
-            ? 'bg-purple-600 text-white border-purple-700 shadow-md shadow-purple-500/20' 
+          activeTab === 'panini'
+            ? 'bg-purple-600 text-white border-purple-700 shadow-md shadow-purple-500/20'
             : 'bg-white border-slate-200 hover:border-purple-300 hover:shadow-sm'
         }`}
       >
         <div className="flex items-center justify-between">
-          <span className={`text-xs font-semibold uppercase tracking-wider ${activeTab === 'panini' ? 'text-purple-200' : 'text-slate-500'}`}>
+          <span
+            className={`text-xs font-semibold uppercase tracking-wider ${
+              activeTab === 'panini' ? 'text-purple-200' : 'text-slate-500'
+            }`}
+          >
             Panini / Marvel / Manga
           </span>
-          <Layers className={`w-5 h-5 ${activeTab === 'panini' ? 'text-purple-200' : 'text-purple-600'}`} />
+          <Layers
+            className={`w-5 h-5 ${activeTab === 'panini' ? 'text-purple-200' : 'text-purple-600'}`}
+          />
         </div>
-        <div className="mt-2 text-3xl font-extrabold tracking-tight">
-          {result.panini.length}
-        </div>
+        <div className="mt-2 text-3xl font-extrabold tracking-tight">{result.panini.length}</div>
         <p className={`text-xs mt-1 ${activeTab === 'panini' ? 'text-purple-200' : 'text-slate-500'}`}>
           Filtrati (non Bonelli)
         </p>

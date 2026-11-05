@@ -1,4 +1,4 @@
-import { PdfRow, SatoRow, MatchedItem, MatchResult } from '../types';
+import { PdfRow, SatoRow, MatchedItem, UnmatchedOrderItem, MatchResult, ItemOverride } from '../types';
 
 export function normalizzaTesto(testo: string | null | undefined): string {
   if (!testo) return '';
@@ -31,6 +31,65 @@ function padZero(numStr: string, length: number): string {
   return digits.padStart(length, '0');
 }
 
+export function ricavaPrefissoBonelli(collanaPdf: string, mappaCollane: Record<string, string>): string {
+  const upper = (collanaPdf || '').trim().toUpperCase();
+  if (!upper) return '';
+  if (mappaCollane[upper]) return mappaCollane[upper];
+
+  // Fallback intelligente per collane non mappate esplicitamente
+  if (upper.includes('ALMANACCO DELLA PAURA')) return 'DD02';
+  if (upper.includes('DYLAN DOG SUPER BOOK')) return 'DD05';
+  if (upper.includes('DYLAN DOG')) return 'DD01';
+  if (upper.includes('TEX NUOVA RISTAMPA')) return 'TE04';
+  if (upper.includes('TEX TRE STELLE')) return 'TE03';
+  if (upper.includes('TEX WILLER')) return 'TE33';
+  if (upper.includes('TEX CLASSIC')) return 'TE32';
+  if (upper.includes('TEX')) return 'TE01';
+  if (upper.includes('ZAGOR') || upper.includes('ZENITH')) return 'ZE01';
+  if (upper.includes('DRAGONERO')) return 'DN01';
+  if (upper.includes('JULIA')) return 'JU01';
+  if (upper.includes('NATHAN NEVER')) return 'NN01';
+  if (upper.includes('MARTIN MYSTERE')) return 'MM01';
+  if (upper.includes('DAMPYR')) return 'DA02';
+  if (upper.includes('MISTER NO')) return 'NO01';
+  if (upper.includes('MORGAN LOST')) return 'ML01';
+  if (upper.includes('MAGICO VENTO')) return 'MV01';
+  if (upper.includes('GEA')) return 'GE02';
+  if (upper.includes('STORIE')) return 'SE01';
+  if (upper.includes('CONFINE')) return 'CN02';
+  if (upper.includes('SCARABEO')) return 'SR01';
+  if (upper.includes('NERO')) return 'NE02';
+  if (upper.includes('NICK')) return 'NI09';
+  if (upper.includes('TSHIRT') || upper.includes('T-SHIRT') || upper.includes('MAGLIET')) return 'VA02';
+  if (upper.includes('TAZZ')) return 'VA01';
+
+  return '';
+}
+
+export function generaCodiceBonelli(
+  collanaPdf: string,
+  codicePdf: string,
+  mappaCollane: Record<string, string>
+): { codiceBonelli: string; prefissoSato: string } {
+  const prefisso = ricavaPrefissoBonelli(collanaPdf, mappaCollane);
+  const codClean = (codicePdf || '').trim();
+  const paddedCod = /^\d+$/.test(codClean) && codClean.length < 3 ? codClean.padStart(3, '0') : codClean;
+
+  if (prefisso) {
+    return {
+      codiceBonelli: codClean ? `${prefisso}-${paddedCod}` : prefisso,
+      prefissoSato: prefisso
+    };
+  }
+
+  // Se non ha un prefisso codificato, usa abbreviazione collana + codice
+  const collShort = (collanaPdf || 'EXTRA').trim().toUpperCase();
+  return {
+    codiceBonelli: codClean ? `${collShort} #${paddedCod}` : collShort,
+    prefissoSato: ''
+  };
+}
+
 export interface PreparedSatoRow extends SatoRow {
   normArticolo: string;
   numUscita: string;
@@ -53,15 +112,24 @@ export function prepareSatoRows(rawRows: SatoRow[]): PreparedSatoRow[] {
 export function abbinaArticoli(
   articoliPdf: PdfRow[],
   satoRows: PreparedSatoRow[],
-  mappaCollane: Record<string, string>
+  mappaCollane: Record<string, string>,
+  overrides: Record<string, ItemOverride> = {}
 ): MatchResult {
   const matchedMap = new Map<number, MatchedItem>();
-  const unmatchedList: PdfRow[] = [];
-  const paniniList: PdfRow[] = [];
+  const unmatchedMap = new Map<string, UnmatchedOrderItem>();
+  const paniniMap = new Map<string, PdfRow>();
 
   for (const item of articoliPdf) {
     if (item.isPanini) {
-      paniniList.push(item);
+      const pKey = `${normalizzaTesto(item.collana)}_${normalizzaTesto(item.codice)}_${normalizzaTesto(item.titolo)}`;
+      if (paniniMap.has(pKey)) {
+        const ex = paniniMap.get(pKey)!;
+        ex.vendite += item.vendite;
+        ex.resi += item.resi;
+        ex.venditeNette += item.venditeNette;
+      } else {
+        paniniMap.set(pKey, { ...item });
+      }
       continue;
     }
 
@@ -79,153 +147,150 @@ export function abbinaArticoli(
     const normMis = normalizzaTesto(misuraPdf);
 
     let bestIdx: number | null = null;
-    const prefissoSato = mappaCollane[collanaPdf.toUpperCase()] || null;
+    const prefissoSato = ricavaPrefissoBonelli(collanaPdf, mappaCollane) || null;
 
-    // =========================================================================
-    // PASSO 1: Match con Prefisso Collana Mappato + Numero Albo + Verifica Titolo
-    // =========================================================================
-    if (prefissoSato && codicePdf) {
-      const padOptions = [
-        codicePdf,
-        padZero(codicePdf, 3),
-        padZero(codicePdf, 4),
-        padZero(numCod, 3),
-        numCod
-      ];
-      const uniquePads = Array.from(new Set(padOptions));
+    if (satoRows.length > 0) {
+      // =========================================================================
+      // PASSO 1: Match con Prefisso Collana Mappato + Numero Albo + Verifica Titolo
+      // =========================================================================
+      if (prefissoSato && codicePdf) {
+        const padOptions = [
+          codicePdf,
+          padZero(codicePdf, 3),
+          padZero(codicePdf, 4),
+          padZero(numCod, 3),
+          numCod
+        ];
+        const uniquePads = Array.from(new Set(padOptions));
 
-      for (const pad of uniquePads) {
-        const candidatoUscita = `${prefissoSato}-${pad}`;
-        const subUscita = satoRows.filter(r => r.uscita === candidatoUscita);
+        for (const pad of uniquePads) {
+          const candidatoUscita = `${prefissoSato}-${pad}`;
+          const subUscita = satoRows.filter(r => r.uscita === candidatoUscita);
 
-        if (subUscita.length === 1) {
-          const row = subUscita[0];
-          if (!normTit || normTit.includes(row.normArticolo) || row.normArticolo.includes(normTit)) {
-            bestIdx = row.rowIndex;
-            break;
+          if (subUscita.length === 1) {
+            const row = subUscita[0];
+            if (!normTit || normTit.includes(row.normArticolo) || row.normArticolo.includes(normTit)) {
+              bestIdx = row.rowIndex;
+              break;
+            }
+          } else if (subUscita.length > 1) {
+            let subVal = subUscita.filter(
+              r => !normTit || normTit.includes(r.normArticolo) || r.normArticolo.includes(normTit)
+            );
+            if (subVal.length === 0) {
+              subVal = subUscita;
+            }
+
+            if (normMis) {
+              const subT = subVal.filter(r => r.normTaglia === normMis);
+              if (subT.length === 1) {
+                bestIdx = subT[0].rowIndex;
+              } else if (subT.length > 1) {
+                subVal = subT;
+              }
+            }
+
+            if (bestIdx === null && normCol) {
+              const subC = subVal.filter(r => r.normColore === normCol);
+              if (subC.length === 1) {
+                bestIdx = subC[0].rowIndex;
+              } else if (subC.length > 1) {
+                subVal = subC;
+              }
+            }
+
+            if (bestIdx === null && subVal.length > 0) {
+              bestIdx = subVal[0].rowIndex;
+            }
+
+            if (bestIdx !== null) {
+              break;
+            }
           }
-        } else if (subUscita.length > 1) {
-          let subVal = subUscita.filter(
-            r => !normTit || normTit.includes(r.normArticolo) || r.normArticolo.includes(normTit)
-          );
-          if (subVal.length === 0) {
-            subVal = subUscita;
+        }
+      }
+
+      // =========================================================================
+      // PASSO 2: Match per Titolo Normalizzato Esatto (con filtri di spareggio)
+      // =========================================================================
+      if (bestIdx === null && normTit) {
+        let candidati = satoRows.filter(r => r.normArticolo === normTit);
+
+        if (candidati.length === 1) {
+          bestIdx = candidati[0].rowIndex;
+        } else if (candidati.length > 1) {
+          if (prefissoSato) {
+            const subP = candidati.filter(r => r.uscita.startsWith(prefissoSato));
+            if (subP.length === 1) {
+              bestIdx = subP[0].rowIndex;
+            } else if (subP.length > 1) {
+              candidati = subP;
+            }
           }
 
-          if (normMis) {
-            const subT = subVal.filter(r => r.normTaglia === normMis);
-            if (subT.length === 1) {
-              bestIdx = subT[0].rowIndex;
-            } else if (subT.length > 1) {
-              subVal = subT;
+          if (bestIdx === null && numCod) {
+            const subN = candidati.filter(r => r.numUscita === numCod);
+            if (subN.length === 1) {
+              bestIdx = subN[0].rowIndex;
+            } else if (subN.length > 1) {
+              candidati = subN;
             }
           }
 
           if (bestIdx === null && normCol) {
-            const subC = subVal.filter(r => r.normColore === normCol);
+            const subC = candidati.filter(r => r.normColore === normCol);
             if (subC.length === 1) {
               bestIdx = subC[0].rowIndex;
             } else if (subC.length > 1) {
-              subVal = subC;
+              candidati = subC;
             }
           }
 
-          if (bestIdx === null && subVal.length > 0) {
-            bestIdx = subVal[0].rowIndex;
+          if (bestIdx === null && normMis) {
+            const subT = candidati.filter(r => r.normTaglia === normMis);
+            if (subT.length === 1) {
+              bestIdx = subT[0].rowIndex;
+            } else if (subT.length > 1) {
+              candidati = subT;
+            }
           }
 
-          if (bestIdx !== null) {
+          if (bestIdx === null && prezzoPdf !== null) {
+            const subPr = candidati.filter(r => r.numPrezzo === prezzoPdf);
+            if (subPr.length === 1) {
+              bestIdx = subPr[0].rowIndex;
+            } else if (subPr.length > 1) {
+              candidati = subPr;
+            }
+          }
+
+          if (bestIdx === null && candidati.length === 1) {
+            bestIdx = candidati[0].rowIndex;
+          } else if (bestIdx === null && candidati.length > 1 && prefissoSato) {
+            const subFinal = candidati.filter(r => r.uscita.startsWith(prefissoSato));
+            if (subFinal.length > 0) {
+              bestIdx = subFinal[0].rowIndex;
+            }
+          }
+        }
+      }
+
+      // =========================================================================
+      // PASSO 3: Match per Merchandising / Codice Uscita DIRETTO
+      // =========================================================================
+      if (bestIdx === null && codicePdf) {
+        const subCod = satoRows.filter(
+          r => r.uscita === codicePdf || r.uscita.endsWith('-' + codicePdf)
+        );
+
+        for (const row of subCod) {
+          if (normTit && (normTit.includes(row.normArticolo) || row.normArticolo.includes(normTit))) {
+            if (normMis && row.normTaglia && normMis !== row.normTaglia) {
+              continue;
+            }
+            bestIdx = row.rowIndex;
             break;
           }
-        }
-      }
-    }
-
-    // =========================================================================
-    // PASSO 2: Match per Titolo Normalizzato Esatto (con filtri di spareggio)
-    // =========================================================================
-    if (bestIdx === null && normTit) {
-      let candidati = satoRows.filter(r => r.normArticolo === normTit);
-
-      if (candidati.length === 1) {
-        bestIdx = candidati[0].rowIndex;
-      } else if (candidati.length > 1) {
-        // Spareggio per prefisso collana se noto
-        if (prefissoSato) {
-          const subP = candidati.filter(r => r.uscita.startsWith(prefissoSato));
-          if (subP.length === 1) {
-            bestIdx = subP[0].rowIndex;
-          } else if (subP.length > 1) {
-            candidati = subP;
-          }
-        }
-
-        // Spareggio per numero albo
-        if (bestIdx === null && numCod) {
-          const subN = candidati.filter(r => r.numUscita === numCod);
-          if (subN.length === 1) {
-            bestIdx = subN[0].rowIndex;
-          } else if (subN.length > 1) {
-            candidati = subN;
-          }
-        }
-
-        // Spareggio per colore/variante
-        if (bestIdx === null && normCol) {
-          const subC = candidati.filter(r => r.normColore === normCol);
-          if (subC.length === 1) {
-            bestIdx = subC[0].rowIndex;
-          } else if (subC.length > 1) {
-            candidati = subC;
-          }
-        }
-
-        // Spareggio per taglia (T-Shirt)
-        if (bestIdx === null && normMis) {
-          const subT = candidati.filter(r => r.normTaglia === normMis);
-          if (subT.length === 1) {
-            bestIdx = subT[0].rowIndex;
-          } else if (subT.length > 1) {
-            candidati = subT;
-          }
-        }
-
-        // Spareggio per prezzo
-        if (bestIdx === null && prezzoPdf !== null) {
-          const subPr = candidati.filter(r => r.numPrezzo === prezzoPdf);
-          if (subPr.length === 1) {
-            bestIdx = subPr[0].rowIndex;
-          } else if (subPr.length > 1) {
-            candidati = subPr;
-          }
-        }
-
-        if (bestIdx === null && candidati.length === 1) {
-          bestIdx = candidati[0].rowIndex;
-        } else if (bestIdx === null && candidati.length > 1 && prefissoSato) {
-          const subFinal = candidati.filter(r => r.uscita.startsWith(prefissoSato));
-          if (subFinal.length > 0) {
-            bestIdx = subFinal[0].rowIndex;
-          }
-        }
-      }
-    }
-
-    // =========================================================================
-    // PASSO 3: Match per Merchandising / Codice Uscita DIRETTO
-    // =========================================================================
-    if (bestIdx === null && codicePdf) {
-      const subCod = satoRows.filter(
-        r => r.uscita === codicePdf || r.uscita.endsWith('-' + codicePdf)
-      );
-
-      for (const row of subCod) {
-        if (normTit && (normTit.includes(row.normArticolo) || row.normArticolo.includes(normTit))) {
-          if (normMis && row.normTaglia && normMis !== row.normTaglia) {
-            continue;
-          }
-          bestIdx = row.rowIndex;
-          break;
         }
       }
     }
@@ -235,7 +300,6 @@ export function abbinaArticoli(
       if (matchedMap.has(bestIdx)) {
         const existing = matchedMap.get(bestIdx)!;
         existing.qtaVenduta += qtaVenduta;
-        existing.qtaOrdine += qtaVenduta;
         existing.righePdf.push(item);
       } else {
         const rowCsv = satoRows.find(r => r.rowIndex === bestIdx)!;
@@ -259,27 +323,80 @@ export function abbinaArticoli(
         });
       }
     } else {
-      unmatchedList.push(item);
+      // Articolo Non a Catalogo CSV -> Raggruppa e genera codice tipo DD01-xxx per Ordine Mail
+      const { codiceBonelli, prefissoSato: pref } = generaCodiceBonelli(collanaPdf, codicePdf, mappaCollane);
+      const uKey = `unmatch_${normalizzaTesto(collanaPdf)}_${normalizzaTesto(codicePdf)}_${normMis}_${normCol}_${normTit}`;
+
+      if (unmatchedMap.has(uKey)) {
+        const ex = unmatchedMap.get(uKey)!;
+        ex.qtaVenduta += qtaVenduta;
+      } else {
+        unmatchedMap.set(uKey, {
+          id: uKey,
+          codiceBonelli,
+          prefissoSato: pref,
+          collana: collanaPdf || 'SENZA COLLANA',
+          codice: codicePdf,
+          colore: colorePdf,
+          misura: misuraPdf,
+          titolo: titoloPdf,
+          prezzoVendita: item.prezzoVendita,
+          qtaVenduta: qtaVenduta,
+          qtaOrdine: qtaVenduta,
+          escluso: false,
+          page: item.page
+        });
+      }
     }
   }
 
-  const matched = Array.from(matchedMap.values()).sort((a, b) => {
-    if (a.uscita < b.uscita) return -1;
-    if (a.uscita > b.uscita) return 1;
-    return a.articolo.localeCompare(b.articolo);
-  });
+  // Applica gli overrides (escluso e qtaDelta) agli articoli Matched (CSV)
+  const matched = Array.from(matchedMap.values())
+    .map(m => {
+      const ov = overrides[m.id];
+      const escluso = ov?.escluso ?? false;
+      const delta = ov?.qtaDelta ?? 0;
+      const qtaOrdine = Math.max(0, m.qtaVenduta + delta);
+      return { ...m, escluso, qtaOrdine };
+    })
+    .sort((a, b) => {
+      if (a.uscita < b.uscita) return -1;
+      if (a.uscita > b.uscita) return 1;
+      return a.articolo.localeCompare(b.articolo);
+    });
+
+  // Applica gli overrides (escluso e qtaDelta) agli articoli Unmatched (Ordine Mail)
+  const unmatched = Array.from(unmatchedMap.values())
+    .map(u => {
+      const ov = overrides[u.id];
+      const escluso = ov?.escluso ?? false;
+      const delta = ov?.qtaDelta ?? 0;
+      const qtaOrdine = Math.max(0, u.qtaVenduta + delta);
+      return { ...u, escluso, qtaOrdine };
+    })
+    .sort((a, b) => {
+      if (a.codiceBonelli < b.codiceBonelli) return -1;
+      if (a.codiceBonelli > b.codiceBonelli) return 1;
+      return a.titolo.localeCompare(b.titolo);
+    });
+
+  const paniniList = Array.from(paniniMap.values());
 
   const totalVenduto = articoliPdf.reduce((acc, it) => acc + it.venditeNette, 0);
   const totalDaOrdinare = matched
     .filter(m => !m.escluso)
     .reduce((acc, m) => acc + m.qtaOrdine, 0);
+  const totalDaOrdinareMail = unmatched
+    .filter(u => !u.escluso)
+    .reduce((acc, u) => acc + u.qtaOrdine, 0);
 
   return {
     matched,
-    unmatched: unmatchedList,
+    unmatched,
     panini: paniniList,
     totalVenduto,
     totalDaOrdinare,
+    totalDaOrdinareMail,
     totalRighePdf: articoliPdf.length
   };
 }

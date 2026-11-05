@@ -23,7 +23,14 @@ interface TextPiece {
   text: string;
 }
 
-export async function parsePdfVenduto(fileOrBuffer: File | ArrayBuffer): Promise<PdfRow[]> {
+export interface ParsedPdfResult {
+  rows: PdfRow[];
+  periodo: string;
+  pages: number;
+  fingerprint: string;
+}
+
+export async function parsePdfBatch(fileOrBuffer: File | ArrayBuffer): Promise<ParsedPdfResult> {
   const arrayBuffer = fileOrBuffer instanceof File 
     ? await fileOrBuffer.arrayBuffer() 
     : fileOrBuffer;
@@ -34,6 +41,8 @@ export async function parsePdfVenduto(fileOrBuffer: File | ArrayBuffer): Promise
   });
   const pdfDoc = await loadingTask.promise;
   const righeEstratte: PdfRow[] = [];
+  let periodoDetect = '';
+  let dataStampaDetect = '';
 
   for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
     const page = await pdfDoc.getPage(pageNum);
@@ -68,27 +77,30 @@ export async function parsePdfVenduto(fileOrBuffer: File | ArrayBuffer): Promise
       const fullText = parts.map(p => p.text).join(' ');
       const fullTextUpper = fullText.toUpperCase();
 
+      // Estrazione automatica del periodo o data di stampa dalla prima pagina
+      if (pageNum === 1) {
+        if (!periodoDetect && fullTextUpper.includes('PERIODO')) {
+          const m = fullText.match(/DAL\s+\S+\s+AL\s+\S+/i);
+          if (m) periodoDetect = m[0].toUpperCase();
+        }
+        if (!dataStampaDetect && fullTextUpper.includes('DATA DI STAMPA')) {
+          const m = fullText.match(/(\d{2}\/\d{2}\/\d{4})/);
+          if (m) dataStampaDetect = m[1];
+        }
+      }
+
       if (PAROLE_ESCLUSIONE.some(h => fullTextUpper.includes(h))) continue;
       if (fullText.startsWith('*Errore')) continue;
 
       // Coordinate delle colonne nel PDF cassa Trend:
-      // 1. Collana: x < 100
       const pColl = parts.filter(p => p.x < 100);
-      // 2. Codice: 100 <= x < 180
       const pCod = parts.filter(p => p.x >= 100 && p.x < 180);
-      // 3. Titolo: 180 <= x < 450
       const pTit = parts.filter(p => p.x >= 180 && p.x < 450);
-      // 4. Colore/Variante: 450 <= x < 560
       const pCol = parts.filter(p => p.x >= 450 && p.x < 560);
-      // 5. Misura/Taglia: 560 <= x < 630
       const pMis = parts.filter(p => p.x >= 560 && p.x < 630);
-      // 6. Vendite: 630 <= x < 695
       const pVend = parts.filter(p => p.x >= 630 && p.x < 695);
-      // 7. Resi: 695 <= x < 740
       const pResi = parts.filter(p => p.x >= 695 && p.x < 740);
-      // 8. Prezzo Vendita: 740 <= x < 790
       const pPrVend = parts.filter(p => p.x >= 740 && p.x < 790);
-      // 9. Prezzo Fatturare: x >= 790
       const pPrFatt = parts.filter(p => p.x >= 790);
 
       const codice = pCod.map(p => p.text).join(' ').trim();
@@ -105,7 +117,6 @@ export async function parsePdfVenduto(fileOrBuffer: File | ArrayBuffer): Promise
       const prezzoVend = pPrVend.map(p => p.text).join('').trim();
       const prezzoFatt = pPrFatt.map(p => p.text).join('').trim();
 
-      // Normalizzazione taglia se contenuta nel campo colore
       if (!misura && colore) {
         const cParts = colore.split(/\s+/);
         const lastC = cParts[cParts.length - 1].toUpperCase();
@@ -142,5 +153,23 @@ export async function parsePdfVenduto(fileOrBuffer: File | ArrayBuffer): Promise
     }
   }
 
-  return righeEstratte;
+  const periodo = periodoDetect || (dataStampaDetect ? `Stampa ${dataStampaDetect}` : '');
+  const totCopie = righeEstratte.reduce((s, r) => s + r.venditeNette, 0);
+  const firstItem = righeEstratte[0] ? `${righeEstratte[0].collana}_${righeEstratte[0].codice}` : '';
+  const lastItem = righeEstratte[righeEstratte.length - 1]
+    ? `${righeEstratte[righeEstratte.length - 1].collana}_${righeEstratte[righeEstratte.length - 1].codice}`
+    : '';
+  const fingerprint = `${periodo}|${righeEstratte.length}|${totCopie}|${firstItem}|${lastItem}`;
+
+  return {
+    rows: righeEstratte,
+    periodo,
+    pages: pdfDoc.numPages,
+    fingerprint
+  };
+}
+
+export async function parsePdfVenduto(fileOrBuffer: File | ArrayBuffer): Promise<PdfRow[]> {
+  const res = await parsePdfBatch(fileOrBuffer);
+  return res.rows;
 }

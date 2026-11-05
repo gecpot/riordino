@@ -8,13 +8,22 @@ import { OrdersTable } from './components/OrdersTable';
 import { UnmatchedTable } from './components/UnmatchedTable';
 import { PaniniTable } from './components/PaniniTable';
 import { MapConfigModal } from './components/MapConfigModal';
-import { parsePdfVenduto } from './utils/pdfParser';
+import { parsePdfBatch } from './utils/pdfParser';
 import { prepareSatoRows, abbinaArticoli, PreparedSatoRow } from './utils/matcher';
 import { generaCsvAggiornato, downloadBlob } from './utils/csvExporter';
-import { generaReportNonTrovatiTxt } from './utils/txtExporter';
+import { generaReportNonTrovatiTxt, generaCsvOrdineMail } from './utils/txtExporter';
+import {
+  loadPdfBatches,
+  savePdfBatches,
+  loadCsvData,
+  saveCsvData,
+  loadOverrides,
+  saveOverrides,
+  clearAllSessionStorage
+} from './utils/storage';
 import { MAPPA_PREDEFINITA } from './constants/defaultMap';
-import { PdfRow, SatoRow, MatchedItem, MatchResult } from './types';
-import { Sparkles, AlertCircle, CheckCircle, HelpCircle } from 'lucide-react';
+import { PdfBatch, SavedCsvData, SatoRow, ItemOverride, MatchResult } from './types';
+import { Sparkles, AlertCircle, Info } from 'lucide-react';
 
 const STORAGE_MAP_KEY = 'riordino_mappa_collane_v1';
 
@@ -22,19 +31,19 @@ export function App() {
   const [mappaCollane, setMappaCollane] = useState<Record<string, string>>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_MAP_KEY);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        return { ...MAPPA_PREDEFINITA, ...JSON.parse(saved) };
+      }
     } catch {
       // Fallback
     }
     return { ...MAPPA_PREDEFINITA };
   });
 
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [pdfRows, setPdfRows] = useState<PdfRow[]>([]);
-  const [rawCsvRows, setRawCsvRows] = useState<SatoRow[]>([]);
-  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
-  const [matchResult, setMatchResult] = useState<MatchResult | null>(null);
+  const [pdfBatches, setPdfBatches] = useState<PdfBatch[]>([]);
+  const [csvData, setCsvData] = useState<SavedCsvData | null>(null);
+  const [overrides, setOverrides] = useState<Record<string, ItemOverride>>({});
+  const [isRestoring, setIsRestoring] = useState(true);
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -42,42 +51,121 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // Ripristina automaticamente la sessione settimanale da IndexedDB all'avvio
+  useEffect(() => {
+    let mounted = true;
+    async function restoreSession() {
+      try {
+        const [savedBatches, savedCsv, savedOverrides] = await Promise.all([
+          loadPdfBatches(),
+          loadCsvData(),
+          loadOverrides()
+        ]);
+        if (!mounted) return;
+        setPdfBatches(savedBatches);
+        setCsvData(savedCsv);
+        setOverrides(savedOverrides);
+        if (savedBatches.length > 0 && !savedCsv) {
+          setActiveTab('unmatched');
+        }
+      } catch (e) {
+        console.warn('Errore ripristino sessione:', e);
+      } finally {
+        if (mounted) setIsRestoring(false);
+      }
+    }
+    restoreSession();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Concatena tutte le righe di tutti i PDF giornalieri caricati nella settimana
+  const allPdfRows = useMemo(() => {
+    return pdfBatches.flatMap(b => b.rows);
+  }, [pdfBatches]);
+
   // Prepara righe Sato indicizzate
   const preparedSatoRows: PreparedSatoRow[] = useMemo(() => {
-    return prepareSatoRows(rawCsvRows);
-  }, [rawCsvRows]);
+    return prepareSatoRows(csvData?.rows || []);
+  }, [csvData]);
 
-  // Esegue l'abbinamento quando abbiamo sia PDF che CSV o quando cambia la mappa
-  useEffect(() => {
-    if (pdfRows.length > 0 && preparedSatoRows.length > 0) {
-      try {
-        const result = abbinaArticoli(pdfRows, preparedSatoRows, mappaCollane);
-        setMatchResult(result);
-      } catch (err: any) {
-        setErrorMsg('Errore durante l\'abbinamento dei dati: ' + (err.message || String(err)));
-      }
-    } else {
-      setMatchResult(null);
+  // Calcola il risultato dell'abbinamento e delle somme
+  const matchResult: MatchResult | null = useMemo(() => {
+    if (allPdfRows.length === 0) return null;
+    try {
+      return abbinaArticoli(allPdfRows, preparedSatoRows, mappaCollane, overrides);
+    } catch (err: any) {
+      console.error('Errore calcolo abbinamenti:', err);
+      return null;
     }
-  }, [pdfRows, preparedSatoRows, mappaCollane]);
+  }, [allPdfRows, preparedSatoRows, mappaCollane, overrides]);
 
-  // Gestione caricamento PDF
-  const handlePdfSelect = async (file: File) => {
+  // Gestione aggiunta di uno o più PDF giornalieri
+  const handlePdfFilesSelect = async (files: File[]) => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      setPdfFile(file);
-      const rows = await parsePdfVenduto(file);
-      if (rows.length === 0) {
-        throw new Error('Nessun dato di vendita trovato nel PDF. Verifica che sia il file vendite di cassa Trend.');
+      const addedBatches: PdfBatch[] = [];
+      for (const file of files) {
+        const parsed = await parsePdfBatch(file);
+        if (parsed.rows.length === 0) {
+          throw new Error(
+            `Nessun dato di vendita trovato nel file "${file.name}". Verifica che sia il PDF delle vendite cassa Trend.`
+          );
+        }
+
+        // Controllo anti-duplicati
+        const alreadyExists = [...pdfBatches, ...addedBatches].some(
+          b => b.fingerprint === parsed.fingerprint
+        );
+        if (alreadyExists) {
+          const proceed = confirm(
+            `Attenzione: il PDF "${file.name}" (${parsed.periodo || parsed.rows.length + ' righe'}) sembra identico a un PDF già caricato in questa settimana.\n\nVuoi aggiungerlo comunque e sommare di nuovo le quantità?`
+          );
+          if (!proceed) continue;
+        }
+
+        const now = new Date();
+        const uploadedAt =
+          now.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }) +
+          ' ' +
+          now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+
+        addedBatches.push({
+          id: `pdf_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          fileName: file.name,
+          uploadedAt,
+          periodo: parsed.periodo,
+          pages: parsed.pages,
+          rows: parsed.rows,
+          fingerprint: parsed.fingerprint
+        });
       }
-      setPdfRows(rows);
+
+      if (addedBatches.length > 0) {
+        const nextBatches = [...pdfBatches, ...addedBatches];
+        setPdfBatches(nextBatches);
+        await savePdfBatches(nextBatches);
+        if (!csvData) {
+          setActiveTab('unmatched');
+        }
+      }
     } catch (err: any) {
       setErrorMsg('Errore nella lettura del PDF: ' + (err.message || String(err)));
-      setPdfFile(null);
-      setPdfRows([]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Rimozione di un singolo PDF giornaliero
+  const handleRemovePdfBatch = async (batchId: string) => {
+    const target = pdfBatches.find(b => b.id === batchId);
+    if (!target) return;
+    if (confirm(`Vuoi rimuovere "${target.fileName}" dal totale della settimana?`)) {
+      const nextBatches = pdfBatches.filter(b => b.id !== batchId);
+      setPdfBatches(nextBatches);
+      await savePdfBatches(nextBatches);
     }
   };
 
@@ -86,20 +174,15 @@ export function App() {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      setCsvFile(file);
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const text = e.target?.result as string;
           Papa.parse<Record<string, string>>(text, {
             delimiter: ';',
             header: true,
             skipEmptyLines: 'greedy',
-            complete: (results) => {
-              if (results.errors && results.errors.length > 0) {
-                console.warn('Avvisi lettura CSV:', results.errors);
-              }
-
+            complete: async (results) => {
               const fields = results.meta.fields || [];
               const parsedRows: SatoRow[] = results.data.map((row, idx) => ({
                 rowIndex: idx,
@@ -115,152 +198,235 @@ export function App() {
               }));
 
               if (parsedRows.length === 0) {
-                throw new Error('Il file CSV sembra vuoto o non formattato correttamente.');
+                setErrorMsg('Il file CSV sembra vuoto o non formattato correttamente.');
+                setIsLoading(false);
+                return;
               }
 
-              setCsvHeaders(fields);
-              setRawCsvRows(parsedRows);
+              const now = new Date();
+              const uploadedAt =
+                now.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }) +
+                ' ' +
+                now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+
+              const newCsvData: SavedCsvData = {
+                fileName: file.name,
+                fileSize: file.size,
+                uploadedAt,
+                headers: fields,
+                rows: parsedRows
+              };
+
+              setCsvData(newCsvData);
+              await saveCsvData(newCsvData);
+              setActiveTab('matched');
               setIsLoading(false);
             }
           });
         } catch (err: any) {
           setErrorMsg('Errore parsing CSV Sato: ' + (err.message || String(err)));
-          setCsvFile(null);
-          setRawCsvRows([]);
           setIsLoading(false);
         }
       };
 
       reader.onerror = () => {
         setErrorMsg('Impossibile leggere il file CSV.');
-        setCsvFile(null);
-        setRawCsvRows([]);
         setIsLoading(false);
       };
 
-      // Legge con codifica Windows-1252 per garantire corretta lettura caratteri italiani
       reader.readAsText(file, 'windows-1252');
     } catch (err: any) {
       setErrorMsg('Errore apertura CSV: ' + (err.message || String(err)));
-      setCsvFile(null);
-      setRawCsvRows([]);
       setIsLoading(false);
     }
   };
 
-  // Azzeramento completo / Pulisci Schermo (User Request #6)
-  const handleReset = () => {
-    if (confirm('Vuoi azzerare la vista e rimuovere tutti i file caricati?')) {
-      setPdfFile(null);
-      setCsvFile(null);
-      setPdfRows([]);
-      setRawCsvRows([]);
-      setCsvHeaders([]);
-      setMatchResult(null);
-      setSearchQuery('');
-      setErrorMsg(null);
+  // Rimozione CSV Sato
+  const handleClearCsv = async () => {
+    if (confirm('Vuoi rimuovere il file Sato.csv caricato? (I PDF giornalieri resteranno in memoria)')) {
+      setCsvData(null);
+      await saveCsvData(null);
+      setActiveTab('unmatched');
     }
   };
 
-  // Toggle inclusione/esclusione singolo articolo (User Request #4)
-  const handleToggleExclude = (id: string) => {
-    if (!matchResult) return;
-    const updatedMatched = matchResult.matched.map(item => {
-      if (item.id === id) {
-        return { ...item, escluso: !item.escluso };
-      }
-      return item;
-    });
-
-    const newTotalDaOrdinare = updatedMatched
-      .filter(m => !m.escluso)
-      .reduce((acc, m) => acc + m.qtaOrdine, 0);
-
-    setMatchResult({
-      ...matchResult,
-      matched: updatedMatched,
-      totalDaOrdinare: newTotalDaOrdinare
-    });
+  // Azzeramento completo di fine settimana
+  const handleReset = async () => {
+    if (
+      confirm(
+        'Vuoi azzerare tutta la settimana e rimuovere dalla memoria tutti i PDF caricati, il CSV e le spunte?'
+      )
+    ) {
+      setPdfBatches([]);
+      setCsvData(null);
+      setOverrides({});
+      setSearchQuery('');
+      setErrorMsg(null);
+      await clearAllSessionStorage();
+    }
   };
 
-  // Modifica quantita da ordinare
-  const handleUpdateQuantity = (id: string, newQta: number) => {
+  // Toggle inclusione/esclusione singolo articolo (sia per Catalogo CSV che per Ordine Mail)
+  const handleToggleExclude = async (id: string) => {
     if (!matchResult) return;
-    const updatedMatched = matchResult.matched.map(item => {
-      if (item.id === id) {
-        return { ...item, qtaOrdine: newQta };
+    const targetItem =
+      matchResult.matched.find(m => m.id === id) ||
+      matchResult.unmatched.find(u => u.id === id);
+    if (!targetItem) return;
+
+    const nextOverrides: Record<string, ItemOverride> = {
+      ...overrides,
+      [id]: {
+        ...overrides[id],
+        escluso: !targetItem.escluso
       }
-      return item;
-    });
-
-    const newTotalDaOrdinare = updatedMatched
-      .filter(m => !m.escluso)
-      .reduce((acc, m) => acc + m.qtaOrdine, 0);
-
-    setMatchResult({
-      ...matchResult,
-      matched: updatedMatched,
-      totalDaOrdinare: newTotalDaOrdinare
-    });
+    };
+    setOverrides(nextOverrides);
+    await saveOverrides(nextOverrides);
   };
 
-  // Includi tutti
+  // Modifica quantità da ordinare (sia per Catalogo CSV che per Ordine Mail)
+  const handleUpdateQuantity = async (id: string, newQta: number) => {
+    if (!matchResult) return;
+    const targetItem =
+      matchResult.matched.find(m => m.id === id) ||
+      matchResult.unmatched.find(u => u.id === id);
+    if (!targetItem) return;
+
+    const cleanQta = Math.max(0, newQta);
+    const qtaDelta = cleanQta - targetItem.qtaVenduta;
+
+    const nextOverrides: Record<string, ItemOverride> = {
+      ...overrides,
+      [id]: {
+        ...overrides[id],
+        qtaDelta
+      }
+    };
+    setOverrides(nextOverrides);
+    await saveOverrides(nextOverrides);
+  };
+
+  // Esclusione o inclusione di un gruppo di ID (es. per singola collana)
+  const handleBulkExclude = async (ids: string[], escluso: boolean) => {
+    const nextOverrides: Record<string, ItemOverride> = { ...overrides };
+    for (const id of ids) {
+      nextOverrides[id] = {
+        ...nextOverrides[id],
+        escluso
+      };
+    }
+    setOverrides(nextOverrides);
+    await saveOverrides(nextOverrides);
+  };
+
+  // Includi tutti nella tab attiva
   const handleSelectAll = () => {
     if (!matchResult) return;
-    const updatedMatched = matchResult.matched.map(m => ({ ...m, escluso: false }));
-    const newTotal = updatedMatched.reduce((acc, m) => acc + m.qtaOrdine, 0);
-    setMatchResult({ ...matchResult, matched: updatedMatched, totalDaOrdinare: newTotal });
+    if (activeTab === 'matched') {
+      handleBulkExclude(
+        matchResult.matched.map(m => m.id),
+        false
+      );
+    } else if (activeTab === 'unmatched') {
+      handleBulkExclude(
+        matchResult.unmatched.map(u => u.id),
+        false
+      );
+    }
   };
 
-  // Esclusione o inclusione di un gruppo di ID (es. per collana)
-  const handleBulkExclude = (ids: string[], escluso: boolean) => {
-    if (!matchResult) return;
-    const idSet = new Set(ids);
-    const updatedMatched = matchResult.matched.map(item => {
-      if (idSet.has(item.id)) {
-        return { ...item, escluso };
-      }
-      return item;
-    });
-
-    const newTotalDaOrdinare = updatedMatched
-      .filter(m => !m.escluso)
-      .reduce((acc, m) => acc + m.qtaOrdine, 0);
-
-    setMatchResult({
-      ...matchResult,
-      matched: updatedMatched,
-      totalDaOrdinare: newTotalDaOrdinare
-    });
-  };
-
-  // Escludi tutti (QTA = 0)
+  // Escludi tutti nella tab attiva (QTA = 0)
   const handleDeselectAll = () => {
     if (!matchResult) return;
-    const updatedMatched = matchResult.matched.map(m => ({ ...m, escluso: true }));
-    setMatchResult({ ...matchResult, matched: updatedMatched, totalDaOrdinare: 0 });
+    if (activeTab === 'matched') {
+      handleBulkExclude(
+        matchResult.matched.map(m => m.id),
+        true
+      );
+    } else if (activeTab === 'unmatched') {
+      handleBulkExclude(
+        matchResult.unmatched.map(u => u.id),
+        true
+      );
+    }
   };
 
   // Download CSV aggiornato Sato
   const handleDownloadCsv = () => {
-    if (!matchResult || rawCsvRows.length === 0) return;
+    if (!matchResult || !csvData || csvData.rows.length === 0) return;
     try {
-      const bytes = generaCsvAggiornato(rawCsvRows, csvHeaders, matchResult.matched);
+      const bytes = generaCsvAggiornato(csvData.rows, csvData.headers, matchResult.matched);
       downloadBlob(bytes, 'Sato_ordine_AGGIORNATO.csv', 'text/csv;charset=windows-1252');
     } catch (err: any) {
       alert('Errore generazione CSV: ' + err.message);
     }
   };
 
-  // Download Report Non Trovati TXT
+  // Download Allegato Mail TXT (con codici DD01, TE01, ecc. e quantità scelte)
   const handleDownloadTxt = () => {
     if (!matchResult) return;
     try {
       const txt = generaReportNonTrovatiTxt(matchResult.unmatched);
-      downloadBlob(txt, 'albi_non_trovati.txt', 'text/plain;charset=utf-8');
+      downloadBlob(txt, 'Ordine_Mail_Codici.txt', 'text/plain;charset=utf-8');
     } catch (err: any) {
-      alert('Errore generazione report TXT: ' + err.message);
+      alert('Errore generazione allegato TXT: ' + err.message);
     }
+  };
+
+  // Download Allegato Mail CSV (Excel)
+  const handleDownloadMailCsv = () => {
+    if (!matchResult) return;
+    try {
+      const bytes = generaCsvOrdineMail(matchResult.unmatched);
+      downloadBlob(bytes, 'Ordine_Mail_Codici.csv', 'text/csv;charset=windows-1252');
+    } catch (err: any) {
+      alert('Errore generazione allegato CSV: ' + err.message);
+    }
+  };
+
+  // Esporta Backup Settimanale su file .json
+  const handleExportBackup = () => {
+    const backupObj = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      pdfBatches,
+      csvData,
+      overrides,
+      mappaCollane
+    };
+    const jsonStr = JSON.stringify(backupObj);
+    const dateTag = new Date().toISOString().slice(0, 10);
+    downloadBlob(jsonStr, `Backup_Riordino_${dateTag}.json`, 'application/json;charset=utf-8');
+  };
+
+  // Importa Backup Settimanale da file .json
+  const handleImportBackup = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const parsed = JSON.parse(e.target?.result as string);
+        if (!parsed || !Array.isArray(parsed.pdfBatches)) {
+          throw new Error('File di backup non valido.');
+        }
+        setPdfBatches(parsed.pdfBatches || []);
+        setCsvData(parsed.csvData || null);
+        setOverrides(parsed.overrides || {});
+        if (parsed.mappaCollane) {
+          setMappaCollane({ ...MAPPA_PREDEFINITA, ...parsed.mappaCollane });
+          localStorage.setItem(STORAGE_MAP_KEY, JSON.stringify(parsed.mappaCollane));
+        }
+        await Promise.all([
+          savePdfBatches(parsed.pdfBatches || []),
+          saveCsvData(parsed.csvData || null),
+          saveOverrides(parsed.overrides || {})
+        ]);
+        alert('Backup settimanale ripristinato con successo!');
+      } catch (err: any) {
+        alert('Errore nel caricamento del backup: ' + (err.message || String(err)));
+      }
+    };
+    reader.readAsText(file, 'utf-8');
   };
 
   // Salvataggio mappa collane personalizzata
@@ -273,14 +439,17 @@ export function App() {
     }
   };
 
-  const hasData = !!pdfFile || !!csvFile;
+  const hasData = pdfBatches.length > 0 || !!csvData;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 pb-16">
       <Header
         onReset={handleReset}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onExportBackup={handleExportBackup}
+        onImportBackup={handleImportBackup}
         hasData={hasData}
+        pdfCount={pdfBatches.length}
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex-1 w-full">
@@ -300,46 +469,57 @@ export function App() {
           </div>
         )}
 
-        {/* ZONA DRAG & DROP DEI 2 FILE */}
+        {/* ZONA DRAG & DROP DEI FILE */}
         <Dropzone
-          pdfFile={pdfFile}
-          csvFile={csvFile}
-          pdfInfo={pdfRows.length > 0 ? { rowCount: pdfRows.length, pages: Math.max(...pdfRows.map(r => r.page), 1) } : null}
-          csvInfo={rawCsvRows.length > 0 ? { rowCount: rawCsvRows.length } : null}
-          isLoading={isLoading}
-          onPdfSelect={handlePdfSelect}
+          pdfBatches={pdfBatches}
+          csvData={csvData}
+          isLoading={isLoading || isRestoring}
+          onPdfFilesSelect={handlePdfFilesSelect}
+          onRemovePdfBatch={handleRemovePdfBatch}
           onCsvSelect={handleCsvSelect}
-          onClearPdf={() => { setPdfFile(null); setPdfRows([]); }}
-          onClearCsv={() => { setCsvFile(null); setRawCsvRows([]); setCsvHeaders([]); }}
+          onClearCsv={handleClearCsv}
         />
 
+        {/* AVVISO SE CI SONO PDF CARICATI MA NON ANCORA IL CSV SATO */}
+        {pdfBatches.length > 0 && !csvData && (
+          <div className="mb-6 p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-center space-x-3 shadow-sm">
+            <Info className="w-5 h-5 text-blue-600 shrink-0" />
+            <div>
+              <span className="font-bold">Modalità Accumulo Giornaliero attiva: </span>
+              I tuoi PDF sono salvati in memoria e trovi già tutti gli articoli codificati (es.{' '}
+              <span className="font-mono font-bold">DD01</span>, <span className="font-mono font-bold">TE01</span>) qui sotto. Quando caricherai anche il file{' '}
+              <span className="font-mono font-bold">Sato.csv</span>, il programma separerà automaticamente gli articoli a catalogo CSV da quelli da ordinare via Mail!
+            </div>
+          </div>
+        )}
+
         {/* GUIDA RAPIDA SE NESSUN FILE E' CARICATO */}
-        {!pdfFile && !csvFile && (
+        {!isRestoring && pdfBatches.length === 0 && !csvData && (
           <div className="bg-white rounded-2xl border border-slate-200/80 p-8 shadow-sm text-center max-w-2xl mx-auto my-8">
             <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-2xl mx-auto flex items-center justify-center mb-4">
               <Sparkles className="w-6 h-6" />
             </div>
-            <h2 className="text-xl font-bold text-slate-900">Come Funziona il Riordino Web</h2>
+            <h2 className="text-xl font-bold text-slate-900">Riordino Giorno per Giorno & Weekend</h2>
             <p className="text-sm text-slate-600 mt-2 leading-relaxed">
-              Puoi usare questa web app su qualsiasi PC, tablet o telefono. Non richiede installazione ed elabora tutto istantaneamente nel tuo browser.
+              Carica ogni giorno il PDF delle vendite: il sito lo tiene in memoria anche se spegni il PC e somma le copie per generare l'ordine completo nel weekend.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 text-left">
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="font-bold text-slate-800 text-xs block mb-1">1. Trascina i file</span>
+                <span className="font-bold text-slate-800 text-xs block mb-1">1. Accumula i PDF</span>
                 <p className="text-xs text-slate-500">
-                  Rilascia il PDF delle vendite Trend e il file Sato.csv nei riquadri sopra.
+                  Trascina i PDF giornalieri di Trend. Si sommano in automatico e restano salvati nel browser.
                 </p>
               </div>
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="font-bold text-slate-800 text-xs block mb-1">2. Spunta ed escludi</span>
+                <span className="font-bold text-slate-800 text-xs block mb-1">2. Spunta e Modifica</span>
                 <p className="text-xs text-slate-500">
-                  Togli la spunta ai titoli che hai già in abbondanza o modifica le quantità.
+                  Scegli cosa ordinare e regola le quantità sia per il catalogo CSV sia per l'ordine via Mail.
                 </p>
               </div>
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="font-bold text-slate-800 text-xs block mb-1">3. Scarica l'ordine</span>
+                <span className="font-bold text-slate-800 text-xs block mb-1">3. CSV + Allegato Mail</span>
                 <p className="text-xs text-slate-500">
-                  Scarica subito <span className="font-mono font-semibold">Sato_ordine_AGGIORNATO.csv</span> pronto per l'invio.
+                  Scarica <span className="font-mono font-semibold">Sato.csv</span> e l'allegato Mail con i codici <span className="font-mono font-semibold">DD01, TE01...</span>
                 </p>
               </div>
             </div>
@@ -360,6 +540,7 @@ export function App() {
             <ExportBar
               onDownloadCsv={handleDownloadCsv}
               onDownloadTxt={handleDownloadTxt}
+              onDownloadMailCsv={handleDownloadMailCsv}
               onSelectAll={handleSelectAll}
               onDeselectAll={handleDeselectAll}
               searchQuery={searchQuery}
@@ -369,7 +550,7 @@ export function App() {
               result={matchResult}
             />
 
-            {/* TABELLA ATTIVA */}
+            {/* TABELLA 1: ARTICOLI A CATALOGO SATO CSV */}
             {activeTab === 'matched' && (
               <OrdersTable
                 items={matchResult.matched}
@@ -380,13 +561,18 @@ export function App() {
               />
             )}
 
+            {/* TABELLA 2: ORDINE MAIL CON CODICI (NON A CATALOGO CSV) */}
             {activeTab === 'unmatched' && (
               <UnmatchedTable
                 items={matchResult.unmatched}
+                onToggleExclude={handleToggleExclude}
+                onUpdateQuantity={handleUpdateQuantity}
+                onBulkExclude={handleBulkExclude}
                 searchQuery={searchQuery}
               />
             )}
 
+            {/* TABELLA 3: PANINI / MANGA */}
             {activeTab === 'panini' && (
               <PaniniTable
                 items={matchResult.panini}
