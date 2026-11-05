@@ -30,9 +30,35 @@ export interface ParsedPdfResult {
   fingerprint: string;
 }
 
+export function readFileToArrayBuffer(file: File): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Impossibile convertire il file in ArrayBuffer.'));
+      }
+    };
+    reader.onerror = () => {
+      const err = reader.error;
+      if (err && (err.name === 'NotFoundError' || err.message?.includes('could not be found'))) {
+        reject(
+          new Error(
+            'Il browser non riesce a leggere il file dal percorso selezionato (es. file dentro uno .ZIP non estratto, allegato mail non salvato o cartella di rete temporanea). Salva prima il PDF sul Desktop o in una cartella del PC e riprova.'
+          )
+        );
+      } else {
+        reject(err || new Error('Errore durante la lettura del file dal disco.'));
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
 export async function parsePdfBatch(fileOrBuffer: File | ArrayBuffer): Promise<ParsedPdfResult> {
   const arrayBuffer = fileOrBuffer instanceof File 
-    ? await fileOrBuffer.arrayBuffer() 
+    ? await readFileToArrayBuffer(fileOrBuffer) 
     : fileOrBuffer;
 
   const loadingTask = pdfjsLib.getDocument({

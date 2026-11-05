@@ -8,7 +8,7 @@ import { OrdersTable } from './components/OrdersTable';
 import { UnmatchedTable } from './components/UnmatchedTable';
 import { PaniniTable } from './components/PaniniTable';
 import { MapConfigModal } from './components/MapConfigModal';
-import { parsePdfBatch } from './utils/pdfParser';
+import { parsePdfBatch, readFileToArrayBuffer } from './utils/pdfParser';
 import { prepareSatoRows, abbinaArticoli, PreparedSatoRow } from './utils/matcher';
 import { generaCsvAggiornato, downloadBlob } from './utils/csvExporter';
 import { generaReportNonTrovatiTxt, generaCsvOrdineMail } from './utils/txtExporter';
@@ -103,15 +103,23 @@ export function App() {
 
   // Gestione aggiunta di uno o più PDF giornalieri
   const handlePdfFilesSelect = async (files: File[]) => {
-    setIsLoading(true);
     setErrorMsg(null);
+    setIsLoading(true);
     try {
+      // Avvia subito la lettura di tutti i file in memoria prima di qualsiasi attesa asincrona
+      const fileBuffers = await Promise.all(
+        files.map(async (f) => ({
+          name: f.name,
+          buffer: await readFileToArrayBuffer(f)
+        }))
+      );
+
       const addedBatches: PdfBatch[] = [];
-      for (const file of files) {
-        const parsed = await parsePdfBatch(file);
+      for (const item of fileBuffers) {
+        const parsed = await parsePdfBatch(item.buffer);
         if (parsed.rows.length === 0) {
           throw new Error(
-            `Nessun dato di vendita trovato nel file "${file.name}". Verifica che sia il PDF delle vendite cassa Trend.`
+            `Nessun dato di vendita trovato nel file "${item.name}". Verifica che sia il PDF delle vendite cassa Trend.`
           );
         }
 
@@ -121,7 +129,7 @@ export function App() {
         );
         if (alreadyExists) {
           const proceed = confirm(
-            `Attenzione: il PDF "${file.name}" (${parsed.periodo || parsed.rows.length + ' righe'}) sembra identico a un PDF già caricato in questa settimana.\n\nVuoi aggiungerlo comunque e sommare di nuovo le quantità?`
+            `Attenzione: il PDF "${item.name}" (${parsed.periodo || parsed.rows.length + ' righe'}) sembra identico a un PDF già caricato in questa settimana.\n\nVuoi aggiungerlo comunque e sommare di nuovo le quantità?`
           );
           if (!proceed) continue;
         }
@@ -134,7 +142,7 @@ export function App() {
 
         addedBatches.push({
           id: `pdf_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          fileName: file.name,
+          fileName: item.name,
           uploadedAt,
           periodo: parsed.periodo,
           pages: parsed.pages,

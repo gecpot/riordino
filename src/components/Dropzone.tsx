@@ -85,10 +85,12 @@ export const Dropzone: React.FC<DropzoneProps> = ({
           accept=".pdf"
           multiple
           className="hidden"
+          onClick={(e) => {
+            (e.target as HTMLInputElement).value = '';
+          }}
           onChange={(e) => {
             if (e.target.files && e.target.files.length > 0) {
               onPdfFilesSelect(Array.from(e.target.files));
-              e.target.value = '';
             }
           }}
         />
@@ -207,10 +209,12 @@ export const Dropzone: React.FC<DropzoneProps> = ({
           type="file"
           accept=".csv,.txt"
           className="hidden"
+          onClick={(e) => {
+            (e.target as HTMLInputElement).value = '';
+          }}
           onChange={(e) => {
             if (e.target.files && e.target.files[0]) {
               onCsvSelect(e.target.files[0]);
-              e.target.value = '';
             }
           }}
         />
