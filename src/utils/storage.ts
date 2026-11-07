@@ -1,4 +1,4 @@
-import { PdfBatch, SavedCsvData, ItemOverride } from '../types';
+import { PdfBatch, SavedCsvData, ItemOverride, NonOrdinabileItem } from '../types';
 
 const DB_NAME = 'riordino_fumetti_db';
 const DB_VERSION = 1;
@@ -67,6 +67,7 @@ async function idbDelete(key: string): Promise<void> {
 const KEY_PDF_BATCHES = 'pdf_batches_v1';
 const KEY_CSV_DATA = 'csv_data_v1';
 const KEY_OVERRIDES = 'item_overrides_v1';
+const KEY_NON_ORDINABILI = 'non_ordinabili_db_v1';
 
 export async function loadPdfBatches(): Promise<PdfBatch[]> {
   return (await idbGet<PdfBatch[]>(KEY_PDF_BATCHES)) || [];
@@ -96,6 +97,15 @@ export async function saveOverrides(overrides: Record<string, ItemOverride>): Pr
   await idbSet(KEY_OVERRIDES, overrides);
 }
 
+export async function loadNonOrdinabili(): Promise<Record<string, NonOrdinabileItem>> {
+  return (await idbGet<Record<string, NonOrdinabileItem>>(KEY_NON_ORDINABILI)) || {};
+}
+
+export async function saveNonOrdinabili(items: Record<string, NonOrdinabileItem>): Promise<void> {
+  await idbSet(KEY_NON_ORDINABILI, items);
+}
+
+// Azzera solo i dati settimanali (PDF, CSV, spunte), mantenendo intatto il database permanente dei Non Ordinabili!
 export async function clearAllSessionStorage(): Promise<void> {
   await idbDelete(KEY_PDF_BATCHES);
   await idbDelete(KEY_CSV_DATA);

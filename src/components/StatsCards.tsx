@@ -1,23 +1,31 @@
 import React from 'react';
-import { PackageCheck, CheckSquare, MailPlus, Layers } from 'lucide-react';
-import { MatchResult } from '../types';
+import { PackageCheck, MailPlus, Layers, Ban } from 'lucide-react';
+import { MatchResult, ActiveTab } from '../types';
 
 interface StatsCardsProps {
   result: MatchResult;
-  activeTab: 'matched' | 'unmatched' | 'panini';
-  onTabChange: (tab: 'matched' | 'unmatched' | 'panini') => void;
+  activeTab: ActiveTab;
+  onTabChange: (tab: ActiveTab) => void;
+  blockedCount: number;
 }
 
-export const StatsCards: React.FC<StatsCardsProps> = ({ result, activeTab, onTabChange }) => {
+export const StatsCards: React.FC<StatsCardsProps> = ({
+  result,
+  activeTab,
+  onTabChange,
+  blockedCount
+}) => {
   const activeMatchedCount = result.matched.filter(m => !m.escluso && m.qtaOrdine > 0).length;
   const excludedMatchedCount = result.matched.filter(m => m.escluso || m.qtaOrdine === 0).length;
 
   const activeUnmatchedCount = result.unmatched.filter(u => !u.escluso && u.qtaOrdine > 0).length;
   const excludedUnmatchedCount = result.unmatched.filter(u => u.escluso || u.qtaOrdine === 0).length;
 
+  const blockedThisWeekCount = Object.keys(result.blockedInWeek || {}).length;
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-      {/* 1. COPIE DA ORDINARE CSV SATO */}
+      {/* 1. CATALOGO CSV SATO */}
       <div
         onClick={() => onTabChange('matched')}
         className={`p-3 rounded-xl border transition-all cursor-pointer ${
@@ -32,40 +40,24 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ result, activeTab, onTab
               activeTab === 'matched' ? 'text-emerald-100' : 'text-slate-500'
             }`}
           >
-            Copie Ordine CSV
+            1. Ordine CSV Sato
           </span>
           <PackageCheck
             className={`w-4 h-4 ${activeTab === 'matched' ? 'text-emerald-100' : 'text-emerald-600'}`}
           />
         </div>
-        <div className="mt-1 text-2xl font-extrabold tracking-tight">{result.totalDaOrdinare}</div>
+        <div className="mt-1 flex items-baseline space-x-1.5">
+          <span className="text-2xl font-extrabold tracking-tight">{result.totalDaOrdinare}</span>
+          <span className={`text-[11px] font-semibold ${activeTab === 'matched' ? 'text-emerald-100' : 'text-slate-500'}`}>
+            copie ({activeMatchedCount} titoli)
+          </span>
+        </div>
         <p className={`text-[11px] mt-0.5 ${activeTab === 'matched' ? 'text-emerald-100' : 'text-slate-500'}`}>
-          {activeMatchedCount} titoli attivi {excludedMatchedCount > 0 && `(${excludedMatchedCount} esclusi)`}
+          {result.matched.length} a catalogo CSV {excludedMatchedCount > 0 && `(${excludedMatchedCount} escl.)`}
         </p>
       </div>
 
-      {/* 2. TITOLI MATCHATI CATALOGO CSV */}
-      <div
-        onClick={() => onTabChange('matched')}
-        className={`p-3 rounded-xl border transition-all cursor-pointer ${
-          activeTab === 'matched'
-            ? 'bg-white border-emerald-500 shadow-sm'
-            : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm'
-        }`}
-      >
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-            Titoli a Catalogo CSV
-          </span>
-          <CheckSquare className="w-4 h-4 text-blue-600" />
-        </div>
-        <div className="mt-1 text-2xl font-extrabold text-slate-900 tracking-tight">
-          {result.matched.length}
-        </div>
-        <p className="text-[11px] text-slate-500 mt-0.5">Pronti per Sato.csv</p>
-      </div>
-
-      {/* 3. ORDINE VIA MAIL (NON A CATALOGO CSV - CODICI DD01, TE01, ECC.) */}
+      {/* 2. ORDINE VIA MAIL (CODICI DD01, TE01, ECC.) */}
       <div
         onClick={() => onTabChange('unmatched')}
         className={`p-3 rounded-xl border transition-all cursor-pointer ${
@@ -80,7 +72,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ result, activeTab, onTab
               activeTab === 'unmatched' ? 'text-amber-100' : 'text-slate-500'
             }`}
           >
-            Ordine Mail (Codici)
+            2. Ordine Mail (Codici)
           </span>
           <MailPlus
             className={`w-4 h-4 ${activeTab === 'unmatched' ? 'text-amber-100' : 'text-amber-600'}`}
@@ -93,11 +85,11 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ result, activeTab, onTab
           </span>
         </div>
         <p className={`text-[11px] mt-0.5 ${activeTab === 'unmatched' ? 'text-amber-100' : 'text-slate-500'}`}>
-          {result.unmatched.length} totali fuori CSV {excludedUnmatchedCount > 0 && `(${excludedUnmatchedCount} esclusi)`}
+          {result.unmatched.length} fuori CSV {excludedUnmatchedCount > 0 && `(${excludedUnmatchedCount} escl.)`}
         </p>
       </div>
 
-      {/* 4. PANINI / ALTRI */}
+      {/* 3. PANINI / ALTRI */}
       <div
         onClick={() => onTabChange('panini')}
         className={`p-3 rounded-xl border transition-all cursor-pointer ${
@@ -112,7 +104,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ result, activeTab, onTab
               activeTab === 'panini' ? 'text-purple-200' : 'text-slate-500'
             }`}
           >
-            Panini / Marvel / Manga
+            3. Panini / Manga
           </span>
           <Layers
             className={`w-4 h-4 ${activeTab === 'panini' ? 'text-purple-200' : 'text-purple-600'}`}
@@ -121,6 +113,40 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ result, activeTab, onTab
         <div className="mt-1 text-2xl font-extrabold tracking-tight">{result.panini.length}</div>
         <p className={`text-[11px] mt-0.5 ${activeTab === 'panini' ? 'text-purple-200' : 'text-slate-500'}`}>
           Filtrati (non Bonelli)
+        </p>
+      </div>
+
+      {/* 4. NON ORDINABILI / ESAURITI */}
+      <div
+        onClick={() => onTabChange('blocked')}
+        className={`p-3 rounded-xl border transition-all cursor-pointer ${
+          activeTab === 'blocked'
+            ? 'bg-rose-600 text-white border-rose-700 shadow-md shadow-rose-500/20'
+            : 'bg-white border-slate-200 hover:border-rose-300 hover:shadow-sm'
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <span
+            className={`text-[11px] font-semibold uppercase tracking-wider ${
+              activeTab === 'blocked' ? 'text-rose-100' : 'text-slate-500'
+            }`}
+          >
+            4. Non Ordinabili
+          </span>
+          <Ban
+            className={`w-4 h-4 ${activeTab === 'blocked' ? 'text-rose-100' : 'text-rose-600'}`}
+          />
+        </div>
+        <div className="mt-1 flex items-baseline space-x-1.5">
+          <span className="text-2xl font-extrabold tracking-tight">{blockedCount}</span>
+          <span className={`text-[11px] font-semibold ${activeTab === 'blocked' ? 'text-rose-100' : 'text-slate-500'}`}>
+            in archivio
+          </span>
+        </div>
+        <p className={`text-[11px] mt-0.5 ${activeTab === 'blocked' ? 'text-rose-100' : 'text-slate-500'}`}>
+          {blockedThisWeekCount > 0
+            ? `${blockedThisWeekCount} nascosti questa settimana`
+            : 'Nascosti dalla lista Mail'}
         </p>
       </div>
     </div>

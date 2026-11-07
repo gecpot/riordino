@@ -1,4 +1,4 @@
-import { PdfRow, SatoRow, MatchedItem, UnmatchedOrderItem, MatchResult, ItemOverride } from '../types';
+import { PdfRow, SatoRow, MatchedItem, UnmatchedOrderItem, MatchResult, ItemOverride, NonOrdinabileItem } from '../types';
 
 export function normalizzaTesto(testo: string | null | undefined): string {
   if (!testo) return '';
@@ -113,10 +113,12 @@ export function abbinaArticoli(
   articoliPdf: PdfRow[],
   satoRows: PreparedSatoRow[],
   mappaCollane: Record<string, string>,
-  overrides: Record<string, ItemOverride> = {}
+  overrides: Record<string, ItemOverride> = {},
+  nonOrdinabili: Record<string, NonOrdinabileItem> = {}
 ): MatchResult {
   const matchedMap = new Map<number, MatchedItem>();
   const unmatchedMap = new Map<string, UnmatchedOrderItem>();
+  const blockedInWeek: Record<string, number> = {};
   const paniniMap = new Map<string, PdfRow>();
 
   for (const item of articoliPdf) {
@@ -323,9 +325,14 @@ export function abbinaArticoli(
         });
       }
     } else {
-      // Articolo Non a Catalogo CSV -> Raggruppa e genera codice tipo DD01-xxx per Ordine Mail
+      // Articolo Non a Catalogo CSV -> Verifica prima se è nel database permanente dei Non Ordinabili
       const { codiceBonelli, prefissoSato: pref } = generaCodiceBonelli(collanaPdf, codicePdf, mappaCollane);
       const uKey = `unmatch_${normalizzaTesto(collanaPdf)}_${normalizzaTesto(codicePdf)}_${normMis}_${normCol}_${normTit}`;
+
+      if (nonOrdinabili[uKey]) {
+        blockedInWeek[uKey] = (blockedInWeek[uKey] || 0) + qtaVenduta;
+        continue;
+      }
 
       if (unmatchedMap.has(uKey)) {
         const ex = unmatchedMap.get(uKey)!;
@@ -393,6 +400,7 @@ export function abbinaArticoli(
   return {
     matched,
     unmatched,
+    blockedInWeek,
     panini: paniniList,
     totalVenduto,
     totalDaOrdinare,

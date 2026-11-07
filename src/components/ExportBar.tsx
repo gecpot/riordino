@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Download, FileText, FileSpreadsheet, CheckCheck, Square, Search, Copy, Check, Mail } from 'lucide-react';
-import { MatchResult } from '../types';
+import { Download, FileText, FileSpreadsheet, CheckCheck, Square, Search, Check, Mail } from 'lucide-react';
+import { MatchResult, ActiveTab } from '../types';
 import { generaTestoCorpoMail } from '../utils/txtExporter';
 
 interface ExportBarProps {
@@ -11,9 +11,10 @@ interface ExportBarProps {
   onDeselectAll: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  activeTab: 'matched' | 'unmatched' | 'panini';
-  onTabChange: (tab: 'matched' | 'unmatched' | 'panini') => void;
+  activeTab: ActiveTab;
+  onTabChange: (tab: ActiveTab) => void;
   result: MatchResult;
+  blockedCount: number;
 }
 
 export const ExportBar: React.FC<ExportBarProps> = ({
@@ -26,7 +27,8 @@ export const ExportBar: React.FC<ExportBarProps> = ({
   onSearchChange,
   activeTab,
   onTabChange,
-  result
+  result,
+  blockedCount
 }) => {
   const [copiedMail, setCopiedMail] = useState(false);
 
@@ -154,6 +156,16 @@ export const ExportBar: React.FC<ExportBarProps> = ({
             }`}
           >
             3. Panini / Manga ({result.panini.length})
+          </button>
+          <button
+            onClick={() => onTabChange('blocked')}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+              activeTab === 'blocked'
+                ? 'bg-white text-rose-800 shadow-sm font-bold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            4. Non Ordinabili ({blockedCount})
           </button>
         </div>
 

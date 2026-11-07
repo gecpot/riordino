@@ -7,6 +7,7 @@ import { ExportBar } from './components/ExportBar';
 import { OrdersTable } from './components/OrdersTable';
 import { UnmatchedTable } from './components/UnmatchedTable';
 import { PaniniTable } from './components/PaniniTable';
+import { NonOrdinabiliTable } from './components/NonOrdinabiliTable';
 import { MapConfigModal } from './components/MapConfigModal';
 import { parsePdfBatch, readFileToArrayBuffer } from './utils/pdfParser';
 import { prepareSatoRows, abbinaArticoli, PreparedSatoRow } from './utils/matcher';
@@ -19,11 +20,22 @@ import {
   saveCsvData,
   loadOverrides,
   saveOverrides,
+  loadNonOrdinabili,
+  saveNonOrdinabili,
   clearAllSessionStorage
 } from './utils/storage';
 import { MAPPA_PREDEFINITA } from './constants/defaultMap';
-import { PdfBatch, SavedCsvData, SatoRow, ItemOverride, MatchResult } from './types';
-import { Sparkles, AlertCircle, Info } from 'lucide-react';
+import {
+  PdfBatch,
+  SavedCsvData,
+  SatoRow,
+  ItemOverride,
+  MatchResult,
+  NonOrdinabileItem,
+  UnmatchedOrderItem,
+  ActiveTab
+} from './types';
+import { Sparkles, AlertCircle, Info, Search, X } from 'lucide-react';
 
 const STORAGE_MAP_KEY = 'riordino_mappa_collane_v1';
 
@@ -43,28 +55,32 @@ export function App() {
   const [pdfBatches, setPdfBatches] = useState<PdfBatch[]>([]);
   const [csvData, setCsvData] = useState<SavedCsvData | null>(null);
   const [overrides, setOverrides] = useState<Record<string, ItemOverride>>({});
+  const [nonOrdinabili, setNonOrdinabili] = useState<Record<string, NonOrdinabileItem>>({});
+  const [showBlockedStandalone, setShowBlockedStandalone] = useState(false);
   const [isRestoring, setIsRestoring] = useState(true);
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'matched' | 'unmatched' | 'panini'>('matched');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('matched');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Ripristina automaticamente la sessione settimanale da IndexedDB all'avvio
+  // Ripristina automaticamente la sessione settimanale e l'archivio permanente da IndexedDB all'avvio
   useEffect(() => {
     let mounted = true;
     async function restoreSession() {
       try {
-        const [savedBatches, savedCsv, savedOverrides] = await Promise.all([
+        const [savedBatches, savedCsv, savedOverrides, savedBlocked] = await Promise.all([
           loadPdfBatches(),
           loadCsvData(),
-          loadOverrides()
+          loadOverrides(),
+          loadNonOrdinabili()
         ]);
         if (!mounted) return;
         setPdfBatches(savedBatches);
         setCsvData(savedCsv);
         setOverrides(savedOverrides);
+        setNonOrdinabili(savedBlocked);
         if (savedBatches.length > 0 && !savedCsv) {
           setActiveTab('unmatched');
         }
@@ -90,16 +106,24 @@ export function App() {
     return prepareSatoRows(csvData?.rows || []);
   }, [csvData]);
 
-  // Calcola il risultato dell'abbinamento e delle somme
+  // Calcola il risultato dell'abbinamento e delle somme (filtrando i Non Ordinabili dalla Mail)
   const matchResult: MatchResult | null = useMemo(() => {
     if (allPdfRows.length === 0) return null;
     try {
-      return abbinaArticoli(allPdfRows, preparedSatoRows, mappaCollane, overrides);
+      return abbinaArticoli(allPdfRows, preparedSatoRows, mappaCollane, overrides, nonOrdinabili);
     } catch (err: any) {
       console.error('Errore calcolo abbinamenti:', err);
       return null;
     }
-  }, [allPdfRows, preparedSatoRows, mappaCollane, overrides]);
+  }, [allPdfRows, preparedSatoRows, mappaCollane, overrides, nonOrdinabili]);
+
+  const nonOrdinabiliList = useMemo(() => {
+    return Object.values(nonOrdinabili).sort((a, b) => {
+      const c = (a.codiceBonelli || '').localeCompare(b.codiceBonelli || '');
+      if (c !== 0) return c;
+      return (a.titolo || '').localeCompare(b.titolo || '');
+    });
+  }, [nonOrdinabili]);
 
   // Gestione aggiunta di uno o più PDF giornalieri
   const handlePdfFilesSelect = async (files: File[]) => {
@@ -258,11 +282,11 @@ export function App() {
     }
   };
 
-  // Azzeramento completo di fine settimana
+  // Azzeramento di fine settimana (NON cancella i Non Ordinabili)
   const handleReset = async () => {
     if (
       confirm(
-        'Vuoi azzerare tutta la settimana e rimuovere dalla memoria tutti i PDF caricati, il CSV e le spunte?'
+        'Vuoi azzerare i PDF caricati, il CSV e le spunte di questa settimana?\n\n(Nota: il database dei titoli Non Ordinabili / Esauriti resterà salvato in memoria!)'
       )
     ) {
       setPdfBatches([]);
@@ -271,6 +295,78 @@ export function App() {
       setSearchQuery('');
       setErrorMsg(null);
       await clearAllSessionStorage();
+    }
+  };
+
+  // Sposta un titolo fuori catalogo nell'archivio permanente dei Non Ordinabili
+  const handleMarkNonOrdinabile = async (item: UnmatchedOrderItem) => {
+    const now = new Date();
+    const addedAt = now.toLocaleDateString('it-IT', {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit'
+    });
+    const entry: NonOrdinabileItem = {
+      key: item.id,
+      codiceBonelli: item.codiceBonelli,
+      prefissoSato: item.prefissoSato,
+      collana: item.collana,
+      codice: item.codice,
+      colore: item.colore,
+      misura: item.misura,
+      titolo: item.titolo,
+      prezzoVendita: item.prezzoVendita,
+      addedAt
+    };
+    const next = { ...nonOrdinabili, [item.id]: entry };
+    setNonOrdinabili(next);
+    await saveNonOrdinabili(next);
+  };
+
+  // Sposta in blocco una lista di titoli nei Non Ordinabili
+  const handleBulkMarkNonOrdinabile = async (items: UnmatchedOrderItem[]) => {
+    const now = new Date();
+    const addedAt = now.toLocaleDateString('it-IT', {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit'
+    });
+    const next = { ...nonOrdinabili };
+    for (const item of items) {
+      next[item.id] = {
+        key: item.id,
+        codiceBonelli: item.codiceBonelli,
+        prefissoSato: item.prefissoSato,
+        collana: item.collana,
+        codice: item.codice,
+        colore: item.colore,
+        misura: item.misura,
+        titolo: item.titolo,
+        prezzoVendita: item.prezzoVendita,
+        addedAt
+      };
+    }
+    setNonOrdinabili(next);
+    await saveNonOrdinabili(next);
+  };
+
+  // Ripristina un titolo dai Non Ordinabili riportandolo tra quelli ordinabili via Mail
+  const handleRestoreNonOrdinabile = async (key: string) => {
+    const next = { ...nonOrdinabili };
+    delete next[key];
+    setNonOrdinabili(next);
+    await saveNonOrdinabili(next);
+  };
+
+  // Svuota completamente l'archivio Non Ordinabili (solo su richiesta esplicita)
+  const handleClearAllBlocked = async () => {
+    if (
+      confirm(
+        `Sei sicuro di voler svuotare l'intero archivio dei ${nonOrdinabiliList.length} titoli Non Ordinabili?`
+      )
+    ) {
+      setNonOrdinabili({});
+      await saveNonOrdinabili({});
     }
   };
 
@@ -393,14 +489,15 @@ export function App() {
     }
   };
 
-  // Esporta Backup Settimanale su file .json
+  // Esporta Backup Completo (Settimana + Archivio Non Ordinabili + Mappa Collane) su file .json
   const handleExportBackup = () => {
     const backupObj = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       pdfBatches,
       csvData,
       overrides,
+      nonOrdinabili,
       mappaCollane
     };
     const jsonStr = JSON.stringify(backupObj);
@@ -408,28 +505,40 @@ export function App() {
     downloadBlob(jsonStr, `Backup_Riordino_${dateTag}.json`, 'application/json;charset=utf-8');
   };
 
-  // Importa Backup Settimanale da file .json
+  // Importa Backup da file .json
   const handleImportBackup = (file: File) => {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
         const parsed = JSON.parse(e.target?.result as string);
-        if (!parsed || !Array.isArray(parsed.pdfBatches)) {
+        if (!parsed || (!Array.isArray(parsed.pdfBatches) && !parsed.nonOrdinabili)) {
           throw new Error('File di backup non valido.');
         }
-        setPdfBatches(parsed.pdfBatches || []);
-        setCsvData(parsed.csvData || null);
-        setOverrides(parsed.overrides || {});
+        const nextBatches = parsed.pdfBatches || [];
+        const nextCsv = parsed.csvData || null;
+        const nextOverrides = parsed.overrides || {};
+        // Unisce eventuali Non Ordinabili già presenti con quelli del backup così da non perderne nessuno
+        const mergedBlocked: Record<string, NonOrdinabileItem> = {
+          ...nonOrdinabili,
+          ...(parsed.nonOrdinabili || {})
+        };
+
+        setPdfBatches(nextBatches);
+        setCsvData(nextCsv);
+        setOverrides(nextOverrides);
+        setNonOrdinabili(mergedBlocked);
+
         if (parsed.mappaCollane) {
           setMappaCollane({ ...MAPPA_PREDEFINITA, ...parsed.mappaCollane });
           localStorage.setItem(STORAGE_MAP_KEY, JSON.stringify(parsed.mappaCollane));
         }
         await Promise.all([
-          savePdfBatches(parsed.pdfBatches || []),
-          saveCsvData(parsed.csvData || null),
-          saveOverrides(parsed.overrides || {})
+          savePdfBatches(nextBatches),
+          saveCsvData(nextCsv),
+          saveOverrides(nextOverrides),
+          saveNonOrdinabili(mergedBlocked)
         ]);
-        alert('Backup settimanale ripristinato con successo!');
+        alert('Backup ripristinato con successo!');
       } catch (err: any) {
         alert('Errore nel caricamento del backup: ' + (err.message || String(err)));
       }
@@ -456,8 +565,16 @@ export function App() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onExportBackup={handleExportBackup}
         onImportBackup={handleImportBackup}
+        onOpenBlocked={() => {
+          if (matchResult) {
+            setActiveTab('blocked');
+          } else {
+            setShowBlockedStandalone(prev => !prev);
+          }
+        }}
         hasData={hasData}
         pdfCount={pdfBatches.length}
+        blockedCount={nonOrdinabiliList.length}
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex-1 w-full">
@@ -501,8 +618,40 @@ export function App() {
           </div>
         )}
 
+        {/* ARCHIVIO NON ORDINABILI CONSULTABILE ANCHE SENZA PDF CARICATI */}
+        {!matchResult && showBlockedStandalone && (
+          <div className="my-4 space-y-2 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm">
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Cerca nei Non Ordinabili..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+              <button
+                onClick={() => setShowBlockedStandalone(false)}
+                className="inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Chiudi vista archivio
+              </button>
+            </div>
+
+            <NonOrdinabiliTable
+              items={nonOrdinabiliList}
+              onRestoreItem={handleRestoreNonOrdinabile}
+              onClearAllBlocked={handleClearAllBlocked}
+              searchQuery={searchQuery}
+            />
+          </div>
+        )}
+
         {/* GUIDA RAPIDA SE NESSUN FILE E' CARICATO */}
-        {!isRestoring && pdfBatches.length === 0 && !csvData && (
+        {!isRestoring && pdfBatches.length === 0 && !csvData && !showBlockedStandalone && (
           <div className="bg-white rounded-2xl border border-slate-200/80 p-8 shadow-sm text-center max-w-2xl mx-auto my-8">
             <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-2xl mx-auto flex items-center justify-center mb-4">
               <Sparkles className="w-6 h-6" />
@@ -542,6 +691,7 @@ export function App() {
               result={matchResult}
               activeTab={activeTab}
               onTabChange={setActiveTab}
+              blockedCount={nonOrdinabiliList.length}
             />
 
             {/* BARRA AZIONI, DOWNLOAD E RICERCA */}
@@ -556,6 +706,7 @@ export function App() {
               activeTab={activeTab}
               onTabChange={setActiveTab}
               result={matchResult}
+              blockedCount={nonOrdinabiliList.length}
             />
 
             {/* TABELLA 1: ARTICOLI A CATALOGO SATO CSV */}
@@ -575,6 +726,8 @@ export function App() {
                 items={matchResult.unmatched}
                 onToggleExclude={handleToggleExclude}
                 onUpdateQuantity={handleUpdateQuantity}
+                onMarkNonOrdinabile={handleMarkNonOrdinabile}
+                onBulkMarkNonOrdinabile={handleBulkMarkNonOrdinabile}
                 onBulkExclude={handleBulkExclude}
                 searchQuery={searchQuery}
               />
@@ -584,6 +737,17 @@ export function App() {
             {activeTab === 'panini' && (
               <PaniniTable
                 items={matchResult.panini}
+                searchQuery={searchQuery}
+              />
+            )}
+
+            {/* TABELLA 4: ARCHIVIO PERMANENTE NON ORDINABILI / ESAURITI */}
+            {activeTab === 'blocked' && (
+              <NonOrdinabiliTable
+                items={nonOrdinabiliList}
+                blockedInWeek={matchResult.blockedInWeek}
+                onRestoreItem={handleRestoreNonOrdinabile}
+                onClearAllBlocked={handleClearAllBlocked}
                 searchQuery={searchQuery}
               />
             )}

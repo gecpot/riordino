@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CheckSquare, Square, Plus, Minus, Shirt, Info, Filter, CheckCheck, XCircle } from 'lucide-react';
+import { CheckSquare, Square, Plus, Minus, Shirt, Info, Filter, CheckCheck, XCircle, Ban } from 'lucide-react';
 import { UnmatchedOrderItem } from '../types';
 import { isArticoloLibro } from '../constants/defaultMap';
 
@@ -7,6 +7,8 @@ interface UnmatchedTableProps {
   items: UnmatchedOrderItem[];
   onToggleExclude: (id: string) => void;
   onUpdateQuantity: (id: string, newQta: number) => void;
+  onMarkNonOrdinabile: (item: UnmatchedOrderItem) => void;
+  onBulkMarkNonOrdinabile?: (items: UnmatchedOrderItem[]) => void;
   onBulkExclude?: (ids: string[], escluso: boolean) => void;
   searchQuery: string;
 }
@@ -49,6 +51,8 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
   items,
   onToggleExclude,
   onUpdateQuantity,
+  onMarkNonOrdinabile,
+  onBulkMarkNonOrdinabile,
   onBulkExclude,
   searchQuery
 }) => {
@@ -129,6 +133,24 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
                   <XCircle className="w-3 h-3 mr-1" />
                   Escludi {selectedCollana}
                 </button>
+                {onBulkMarkNonOrdinabile && filtered.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Vuoi spostare tutti i ${filtered.length} titoli mostrati di "${selectedCollana}" nell'archivio permanente dei Non Ordinabili?`
+                        )
+                      ) {
+                        onBulkMarkNonOrdinabile(filtered);
+                      }
+                    }}
+                    className="inline-flex items-center px-2 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 text-[11px] font-semibold"
+                    title="Sposta tutti i titoli filtrati nell'archivio permanente Non Ordinabili"
+                  >
+                    <Ban className="w-3 h-3 mr-1" />
+                    Non Ordinabili ({filtered.length})
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -188,7 +210,7 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
           <Info className="w-3.5 h-3.5 text-amber-700 shrink-0" />
           <div>
             <span className="font-semibold">Ordine via Mail (Fuori Catalogo CSV): </span>
-            Codificati in automatico (es. <span className="font-mono font-bold">DD01-039</span>, <span className="font-mono font-bold">TE01-512</span>). Usa <strong>SÌ / NO</strong> e <strong>+ / -</strong> per scegliere cosa ordinare.
+            Usa <strong>SÌ / NO</strong> e <strong>+ / -</strong> per scegliere cosa ordinare oggi, oppure <strong>Non ord.</strong> per nascondere per sempre i titoli esauriti.
           </div>
         </div>
 
@@ -202,13 +224,14 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
                 <th className="py-1.5 px-2 font-mono w-28 whitespace-nowrap">Codice Ordine</th>
                 <th className="py-1.5 px-2">Titolo Albo</th>
                 <th className="py-1.5 px-2 text-right w-16 whitespace-nowrap">Prezzo</th>
-                <th className="py-1.5 px-2 w-40 whitespace-nowrap">Collana PDF</th>
+                <th className="py-1.5 px-2 w-36 whitespace-nowrap">Collana PDF</th>
+                <th className="py-1.5 px-2 text-center w-24 whitespace-nowrap">Esaurito</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-6 text-center text-slate-500">
+                  <td colSpan={8} className="py-6 text-center text-slate-500">
                     {items.length === 0
                       ? 'Nessun albo fuori catalogo CSV! Tutti i titoli sono presenti nel file Sato.csv.'
                       : `Nessun risultato per i filtri selezionati.`}
@@ -339,6 +362,18 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
                       {/* COLLANA PDF */}
                       <td className="py-1 px-2 text-slate-500 text-[11px] whitespace-nowrap">
                         {item.collana}
+                      </td>
+
+                      {/* PULSANTE ARCHIVIA COME NON ORDINABILE */}
+                      <td className="py-1 px-1.5 text-center whitespace-nowrap">
+                        <button
+                          onClick={() => onMarkNonOrdinabile(item)}
+                          className="inline-flex items-center px-1.5 py-0.5 rounded font-semibold text-[10px] bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white border border-rose-200 transition-colors select-none"
+                          title="Segna come Non Ordinabile / Esaurito: viene spostato nella lista Non Ordinabili e non ti verrà più proposto nella Mail"
+                        >
+                          <Ban className="w-2.5 h-2.5 mr-1" />
+                          Non ord.
+                        </button>
                       </td>
                     </tr>
                   );

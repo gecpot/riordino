@@ -85,9 +85,26 @@ export interface UnmatchedOrderItem {
   page: number;
 }
 
+export interface NonOrdinabileItem {
+  key: string;
+  codiceBonelli: string;
+  prefissoSato: string;
+  collana: string;
+  codice: string;
+  colore: string;
+  misura: string;
+  titolo: string;
+  prezzoVendita: string;
+  addedAt: string;
+  qtaVendutaSettimana?: number;
+}
+
+export type ActiveTab = 'matched' | 'unmatched' | 'panini' | 'blocked';
+
 export interface MatchResult {
   matched: MatchedItem[];
   unmatched: UnmatchedOrderItem[];
+  blockedInWeek: Record<string, number>; // mappa key -> copie vendute nei PDF della settimana corrente
   panini: PdfRow[];
   totalVenduto: number;
   totalDaOrdinare: number;     // Totale copie ordine CSV Sato
