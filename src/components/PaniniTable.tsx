@@ -28,45 +28,45 @@ export const PaniniTable: React.FC<PaniniTableProps> = ({ items, searchQuery }) 
         </div>
       </div>
 
-      <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+      <div className="overflow-x-auto max-h-[650px] overflow-y-auto">
         <table className="w-full text-left border-collapse text-xs">
-          <thead className="bg-slate-100 text-slate-700 sticky top-0 z-10 border-b border-slate-200 uppercase font-semibold tracking-wider text-[11px]">
+          <thead className="bg-slate-100 text-slate-700 sticky top-0 z-10 border-b border-slate-200 uppercase font-semibold tracking-tight text-[10px]">
             <tr>
-              <th className="py-2.5 px-3">Collana</th>
-              <th className="py-2.5 px-3 font-mono">Codice</th>
-              <th className="py-2.5 px-3">Titolo</th>
-              <th className="py-2.5 px-3 text-center">Vendite Nette</th>
-              <th className="py-2.5 px-3 text-right">Prezzo</th>
-              <th className="py-2.5 px-3 text-slate-400 text-center">Pagina PDF</th>
+              <th className="py-1.5 px-2 w-40 whitespace-nowrap">Collana</th>
+              <th className="py-1.5 px-2 font-mono w-20 whitespace-nowrap">Codice</th>
+              <th className="py-1.5 px-2">Titolo</th>
+              <th className="py-1.5 px-2 text-center w-20 whitespace-nowrap">Venduti</th>
+              <th className="py-1.5 px-2 text-right w-16 whitespace-nowrap">Prezzo</th>
+              <th className="py-1.5 px-2 text-slate-400 text-center w-16 whitespace-nowrap">Pag.</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-8 text-center text-slate-500">
+                <td colSpan={6} className="py-6 text-center text-slate-500">
                   {items.length === 0 ? 'Nessun articolo Panini presente nel PDF venduto.' : `Nessun risultato per "${searchQuery}".`}
                 </td>
               </tr>
             ) : (
               filtered.map((item, idx) => (
                 <tr key={idx} className="hover:bg-purple-50/30 transition-colors">
-                  <td className="py-2 px-3 font-medium text-purple-900">
+                  <td className="py-1 px-2 font-medium text-purple-900 whitespace-nowrap">
                     {item.collana}
                   </td>
-                  <td className="py-2 px-3 font-mono font-semibold text-slate-900">
+                  <td className="py-1 px-2 font-mono font-semibold text-slate-900 whitespace-nowrap">
                     {item.codice}
                   </td>
-                  <td className="py-2 px-3 font-medium text-slate-900">
+                  <td className="py-1 px-2 font-medium text-slate-900">
                     {item.titolo}
                   </td>
-                  <td className="py-2 px-3 text-center font-bold text-purple-700">
+                  <td className="py-1 px-2 text-center font-bold text-purple-700 whitespace-nowrap">
                     {item.venditeNette}
                   </td>
-                  <td className="py-2 px-3 text-right font-medium text-slate-700">
+                  <td className="py-1 px-2 text-right font-medium text-slate-700 whitespace-nowrap">
                     {item.prezzoVendita ? `${item.prezzoVendita} €` : '-'}
                   </td>
-                  <td className="py-2 px-3 text-center text-slate-400">
-                    pag. {item.page}
+                  <td className="py-1 px-2 text-center text-slate-400 whitespace-nowrap">
+                    p.{item.page}
                   </td>
                 </tr>
               ))

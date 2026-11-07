@@ -173,36 +173,33 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
         </div>
       )}
 
-      {/* TABELLA ARTICOLI ORDINE MAIL */}
+      {/* TABELLA ARTICOLI ORDINE MAIL COMPATTA */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-3.5 bg-amber-50/80 border-b border-amber-200 text-amber-900 text-xs flex items-start space-x-2.5">
-          <Info className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+        <div className="px-3 py-2 bg-amber-50/80 border-b border-amber-200 text-amber-900 text-xs flex items-center space-x-2">
+          <Info className="w-3.5 h-3.5 text-amber-700 shrink-0" />
           <div>
             <span className="font-semibold">Ordine via Mail (Fuori Catalogo CSV): </span>
-            Questi fumetti non sono presenti nel file <span className="font-mono">Sato.csv</span> ma sono stati codificati automaticamente (es. <span className="font-mono font-bold">DD01-039</span>, <span className="font-mono font-bold">TE01-512</span>).
-            Puoi usare la <strong>spunta ORDINA / ESCLUSO</strong> e i tasti <strong>+ / -</strong> per decidere cosa e quanto allegare alla mail di riordino!
+            Codificati in automatico (es. <span className="font-mono font-bold">DD01-039</span>, <span className="font-mono font-bold">TE01-512</span>). Usa <strong>SÌ / NO</strong> e <strong>+ / -</strong> per scegliere cosa ordinare.
           </div>
         </div>
 
-        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+        <div className="overflow-x-auto max-h-[650px] overflow-y-auto">
           <table className="w-full text-left border-collapse text-xs">
-            <thead className="bg-slate-100 text-slate-700 sticky top-0 z-10 border-b border-slate-200 uppercase font-semibold tracking-wider text-[11px]">
+            <thead className="bg-slate-100 text-slate-700 sticky top-0 z-10 border-b border-slate-200 uppercase font-semibold tracking-tight text-[10px]">
               <tr>
-                <th className="py-2.5 px-3 text-center w-28">Stato Mail</th>
-                <th className="py-2.5 px-3 text-center w-28">Q.tà Ordine</th>
-                <th className="py-2.5 px-2 text-center w-16">Venduti</th>
-                <th className="py-2.5 px-3 font-mono">Codice Ordine</th>
-                <th className="py-2.5 px-3">Titolo Albo</th>
-                <th className="py-2.5 px-2 text-center">Taglia</th>
-                <th className="py-2.5 px-3">Var / Colore</th>
-                <th className="py-2.5 px-3 text-right">Prezzo</th>
-                <th className="py-2.5 px-3">Collana PDF</th>
+                <th className="py-1.5 px-2 text-center w-20 whitespace-nowrap">Stato</th>
+                <th className="py-1.5 px-2 text-center w-24 whitespace-nowrap">Q.tà Ord.</th>
+                <th className="py-1.5 px-1.5 text-center w-12 whitespace-nowrap">Vend.</th>
+                <th className="py-1.5 px-2 font-mono w-28 whitespace-nowrap">Codice Ordine</th>
+                <th className="py-1.5 px-2">Titolo Albo</th>
+                <th className="py-1.5 px-2 text-right w-16 whitespace-nowrap">Prezzo</th>
+                <th className="py-1.5 px-2 w-40 whitespace-nowrap">Collana PDF</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-500">
+                  <td colSpan={7} className="py-6 text-center text-slate-500">
                     {items.length === 0
                       ? 'Nessun albo fuori catalogo CSV! Tutti i titoli sono presenti nel file Sato.csv.'
                       : `Nessun risultato per i filtri selezionati.`}
@@ -212,6 +209,7 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
                 filtered.map((item) => {
                   const isExcluded = item.escluso;
                   const hasTaglia = !!item.misura && item.misura !== '-';
+                  const hasColore = !!item.colore && item.colore !== '-';
 
                   return (
                     <tr
@@ -223,10 +221,10 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
                       }`}
                     >
                       {/* STATO ORDINE MAIL TOGGLE */}
-                      <td className="py-2 px-3 text-center">
+                      <td className="py-1 px-1.5 text-center whitespace-nowrap">
                         <button
                           onClick={() => onToggleExclude(item.id)}
-                          className={`inline-flex items-center px-2 py-1 rounded-md font-semibold transition-all select-none ${
+                          className={`inline-flex items-center px-1.5 py-0.5 rounded font-semibold text-[11px] transition-all select-none ${
                             isExcluded
                               ? 'bg-slate-200 text-slate-600 hover:bg-slate-300'
                               : 'bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300/60'
@@ -239,27 +237,27 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
                         >
                           {isExcluded ? (
                             <>
-                              <Square className="w-3.5 h-3.5 mr-1" />
-                              ESCLUSO
+                              <Square className="w-3 h-3 mr-1" />
+                              NO
                             </>
                           ) : (
                             <>
-                              <CheckSquare className="w-3.5 h-3.5 mr-1 text-amber-800" />
-                              ORDINA
+                              <CheckSquare className="w-3 h-3 mr-1 text-amber-800" />
+                              SÌ
                             </>
                           )}
                         </button>
                       </td>
 
                       {/* QTA ORDINE MAIL EDITABILE */}
-                      <td className="py-2 px-3 text-center">
-                        <div className="inline-flex items-center space-x-1">
+                      <td className="py-1 px-1.5 text-center whitespace-nowrap">
+                        <div className="inline-flex items-center space-x-0.5">
                           <button
                             disabled={isExcluded || item.qtaOrdine <= 0}
                             onClick={() => onUpdateQuantity(item.id, Math.max(0, item.qtaOrdine - 1))}
-                            className="w-6 h-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
                           >
-                            <Minus className="w-3 h-3" />
+                            <Minus className="w-2.5 h-2.5" />
                           </button>
                           <input
                             type="number"
@@ -270,7 +268,7 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
                               const val = parseInt(e.target.value, 10);
                               onUpdateQuantity(item.id, isNaN(val) ? 0 : Math.max(0, val));
                             }}
-                            className={`w-12 text-center py-0.5 rounded border text-xs font-bold ${
+                            className={`w-10 text-center py-0 rounded border text-xs font-bold ${
                               isExcluded
                                 ? 'bg-slate-100 border-slate-200 text-slate-400'
                                 : 'bg-white border-amber-300 text-amber-900 focus:ring-1 focus:ring-amber-500'
@@ -279,22 +277,22 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
                           <button
                             disabled={isExcluded}
                             onClick={() => onUpdateQuantity(item.id, item.qtaOrdine + 1)}
-                            className="w-6 h-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="w-5 h-5 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
                           >
-                            <Plus className="w-3 h-3" />
+                            <Plus className="w-2.5 h-2.5" />
                           </button>
                         </div>
                       </td>
 
                       {/* VENDUTI */}
-                      <td className="py-2 px-2 text-center font-semibold text-slate-700">
+                      <td className="py-1 px-1.5 text-center font-semibold text-slate-600 whitespace-nowrap">
                         {item.qtaVenduta}
                       </td>
 
                       {/* CODICE BONELLI (ES. DD01-039) */}
-                      <td className="py-2 px-3 whitespace-nowrap">
+                      <td className="py-1 px-2 whitespace-nowrap">
                         <span
-                          className={`inline-block font-mono font-bold px-2 py-0.5 rounded text-xs ${
+                          className={`inline-block font-mono font-bold px-1.5 py-0 rounded text-xs ${
                             isExcluded
                               ? 'bg-slate-100 text-slate-400'
                               : item.prefissoSato
@@ -306,35 +304,31 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
                         </span>
                       </td>
 
-                      {/* TITOLO */}
-                      <td className={`py-2 px-3 font-medium ${isExcluded ? 'line-through' : 'text-slate-900'}`}>
-                        {item.titolo}
-                      </td>
-
-                      {/* TAGLIA */}
-                      <td className="py-2 px-2 text-center whitespace-nowrap">
-                        {hasTaglia ? (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold text-[10px]">
-                            <Shirt className="w-2.5 h-2.5 mr-0.5" />
-                            {item.misura}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </td>
-
-                      {/* VAR / COLORE */}
-                      <td className="py-2 px-3 text-slate-600 whitespace-nowrap">
-                        {item.colore || '-'}
+                      {/* TITOLO + EVENTUALE TAGLIA/COLORE INLINE */}
+                      <td className={`py-1 px-2 font-medium ${isExcluded ? 'line-through' : 'text-slate-900'}`}>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span>{item.titolo}</span>
+                          {hasTaglia && (
+                            <span className="inline-flex items-center px-1.5 py-0 rounded bg-amber-100 text-amber-800 font-bold text-[10px]">
+                              <Shirt className="w-2.5 h-2.5 mr-0.5" />
+                              {item.misura}
+                            </span>
+                          )}
+                          {hasColore && (
+                            <span className="inline-flex items-center px-1.5 py-0 rounded bg-slate-100 text-slate-600 text-[10px]">
+                              {item.colore}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* PREZZO */}
-                      <td className="py-2 px-3 text-right font-medium text-slate-700 whitespace-nowrap">
+                      <td className="py-1 px-2 text-right font-medium text-slate-700 whitespace-nowrap">
                         {item.prezzoVendita ? `${item.prezzoVendita} €` : '-'}
                       </td>
 
                       {/* COLLANA PDF */}
-                      <td className="py-2 px-3 text-slate-500 text-[11px] whitespace-nowrap">
+                      <td className="py-1 px-2 text-slate-500 text-[11px] whitespace-nowrap">
                         {item.collana}
                       </td>
                     </tr>
@@ -344,12 +338,12 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
             </tbody>
           </table>
         </div>
-        <div className="bg-slate-50 px-4 py-2 border-t border-slate-200 text-xs text-slate-500 flex justify-between items-center">
+        <div className="bg-slate-50 px-3 py-1.5 border-t border-slate-200 text-[11px] text-slate-500 flex justify-between items-center">
           <span>
             Mostrati {filtered.length} di {items.length} articoli fuori CSV{' '}
             {selectedCollana && `(Filtro: ${selectedCollana})`}
           </span>
-          <span>Gli articoli con spunta "ORDINA" verranno inclusi nell'allegato e nel testo Mail</span>
+          <span>Gli articoli con spunta "SÌ" verranno inclusi nell'allegato e nel testo Mail</span>
         </div>
       </div>
     </div>

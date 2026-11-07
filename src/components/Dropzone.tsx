@@ -62,7 +62,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
   );
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-3">
       {/* 1. SCHEDA PDF VENDITE (MULTI-FILE GIORNO PER GIORNO) */}
       <div
         onDragOver={(e) => {
@@ -71,7 +71,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         }}
         onDragLeave={() => setIsPdfDragOver(false)}
         onDrop={handlePdfDrop}
-        className={`relative border-2 border-dashed rounded-2xl p-5 transition-all duration-200 ${
+        className={`relative border-2 border-dashed rounded-2xl p-3.5 transition-all duration-200 ${
           isPdfDragOver
             ? 'border-red-500 bg-red-50 scale-[1.01] shadow-md'
             : pdfBatches.length > 0
@@ -196,7 +196,7 @@ export const Dropzone: React.FC<DropzoneProps> = ({
         onDragLeave={() => setIsCsvDragOver(false)}
         onDrop={handleCsvDrop}
         onClick={() => !csvData && csvInputRef.current?.click()}
-        className={`relative border-2 border-dashed rounded-2xl p-5 transition-all duration-200 flex flex-col justify-center ${
+        className={`relative border-2 border-dashed rounded-2xl p-3.5 transition-all duration-200 flex flex-col justify-center ${
           csvData
             ? 'border-emerald-400 bg-emerald-50/30 shadow-sm cursor-default'
             : isCsvDragOver

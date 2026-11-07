@@ -20,9 +20,9 @@ export function generaReportNonTrovatiTxt(unmatchedList: UnmatchedOrderItem[]): 
 
   const padEnd = (str: string, len: number) => (str || '').padEnd(len).substring(0, len);
 
-  const header = `${padEnd('CODICE', 14)} | ${padEnd('Q.TA ORD', 8)} | ${padEnd('TAGLIA', 7)} | ${padEnd('VAR/COL', 11)} | ${padEnd('PREZZO', 8)} | ${padEnd('COLLANA', 22)} | TITOLO`;
+  const header = `${padEnd('CODICE', 11)} | ${padEnd('Q.TA', 5)} | ${padEnd('COLLANA', 18)} | TITOLO`;
   lines.push(header);
-  lines.push('-'.repeat(115));
+  lines.push('-'.repeat(80));
 
   const ordinati = [...attivi].sort((a, b) => {
     const compCod = (a.codiceBonelli || '').localeCompare(b.codiceBonelli || '');
@@ -31,18 +31,18 @@ export function generaReportNonTrovatiTxt(unmatchedList: UnmatchedOrderItem[]): 
   });
 
   for (const item of ordinati) {
-    const codBonelli = padEnd(item.codiceBonelli || item.codice || '', 14);
-    const qta = padEnd(String(item.qtaOrdine), 8);
-    const taglia = padEnd(item.misura || '-', 7);
-    const colore = padEnd(item.colore || '-', 11);
-    const prezzo = padEnd(item.prezzoVendita ? `${item.prezzoVendita}` : '-', 8);
-    const coll = padEnd(item.collana || 'SENZA COLLANA', 22);
-    const tit = item.titolo || '';
+    const codBonelli = padEnd(item.codiceBonelli || item.codice || '', 11);
+    const qta = padEnd(String(item.qtaOrdine), 5);
+    const coll = padEnd(item.collana || '-', 18);
+    const extra: string[] = [];
+    if (item.misura && item.misura !== '-') extra.push(`Taglia ${item.misura}`);
+    if (item.colore && item.colore !== '-') extra.push(item.colore);
+    const tit = (item.titolo || '') + (extra.length ? ` [${extra.join(' - ')}]` : '');
 
-    lines.push(`${codBonelli} | ${qta} | ${taglia} | ${colore} | ${prezzo} | ${coll} | ${tit}`);
+    lines.push(`${codBonelli} | ${qta} | ${coll} | ${tit}`);
   }
 
-  lines.push('-'.repeat(115));
+  lines.push('-'.repeat(80));
   lines.push(`TOTALE ARTICOLI: ${totAlbi}  -  TOTALE COPIE DA ORDINARE: ${totCopieOrdine}`);
   lines.push('');
 

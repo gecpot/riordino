@@ -40,7 +40,7 @@ export const ExportBar: React.FC<ExportBarProps> = ({
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6 shadow-sm space-y-4">
+    <div className="bg-white border border-slate-200 rounded-xl p-3 mb-3 shadow-sm space-y-2.5">
       {/* RIGA 1: PULSANTI DOWNLOAD & AZIONI PRINCIPALI */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
