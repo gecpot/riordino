@@ -267,7 +267,7 @@ export const NonOrdinabiliTable: React.FC<NonOrdinabiliTableProps> = ({
             Mostrati {filtered.length} di {items.length} titoli in archivio{' '}
             {selectedCollana && `(Filtro: ${selectedCollana})`}
           </span>
-          <span>Archivio permanente salvato nel browser e incluso nei file Backup</span>
+          <span>Archivio permanente salvato automaticamente nel browser</span>
         </div>
       </div>
     </div>

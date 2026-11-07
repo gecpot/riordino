@@ -489,63 +489,6 @@ export function App() {
     }
   };
 
-  // Esporta Backup Completo (Settimana + Archivio Non Ordinabili + Mappa Collane) su file .json
-  const handleExportBackup = () => {
-    const backupObj = {
-      version: 2,
-      exportedAt: new Date().toISOString(),
-      pdfBatches,
-      csvData,
-      overrides,
-      nonOrdinabili,
-      mappaCollane
-    };
-    const jsonStr = JSON.stringify(backupObj);
-    const dateTag = new Date().toISOString().slice(0, 10);
-    downloadBlob(jsonStr, `Backup_Riordino_${dateTag}.json`, 'application/json;charset=utf-8');
-  };
-
-  // Importa Backup da file .json
-  const handleImportBackup = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const parsed = JSON.parse(e.target?.result as string);
-        if (!parsed || (!Array.isArray(parsed.pdfBatches) && !parsed.nonOrdinabili)) {
-          throw new Error('File di backup non valido.');
-        }
-        const nextBatches = parsed.pdfBatches || [];
-        const nextCsv = parsed.csvData || null;
-        const nextOverrides = parsed.overrides || {};
-        // Unisce eventuali Non Ordinabili già presenti con quelli del backup così da non perderne nessuno
-        const mergedBlocked: Record<string, NonOrdinabileItem> = {
-          ...nonOrdinabili,
-          ...(parsed.nonOrdinabili || {})
-        };
-
-        setPdfBatches(nextBatches);
-        setCsvData(nextCsv);
-        setOverrides(nextOverrides);
-        setNonOrdinabili(mergedBlocked);
-
-        if (parsed.mappaCollane) {
-          setMappaCollane({ ...MAPPA_PREDEFINITA, ...parsed.mappaCollane });
-          localStorage.setItem(STORAGE_MAP_KEY, JSON.stringify(parsed.mappaCollane));
-        }
-        await Promise.all([
-          savePdfBatches(nextBatches),
-          saveCsvData(nextCsv),
-          saveOverrides(nextOverrides),
-          saveNonOrdinabili(mergedBlocked)
-        ]);
-        alert('Backup ripristinato con successo!');
-      } catch (err: any) {
-        alert('Errore nel caricamento del backup: ' + (err.message || String(err)));
-      }
-    };
-    reader.readAsText(file, 'utf-8');
-  };
-
   // Salvataggio mappa collane personalizzata
   const handleSaveMap = (newMap: Record<string, string>) => {
     setMappaCollane(newMap);
@@ -563,8 +506,6 @@ export function App() {
       <Header
         onReset={handleReset}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onExportBackup={handleExportBackup}
-        onImportBackup={handleImportBackup}
         onOpenBlocked={() => {
           if (matchResult) {
             setActiveTab('blocked');

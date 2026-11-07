@@ -1,11 +1,9 @@
-import React, { useRef } from 'react';
-import { BookOpen, RefreshCw, Settings, Sparkles, HardDriveDownload, HardDriveUpload, ShieldCheck, Ban } from 'lucide-react';
+import React from 'react';
+import { BookOpen, RefreshCw, Settings, Sparkles, ShieldCheck, Ban } from 'lucide-react';
 
 interface HeaderProps {
   onReset: () => void;
   onOpenSettings: () => void;
-  onExportBackup: () => void;
-  onImportBackup: (file: File) => void;
   onOpenBlocked?: () => void;
   hasData: boolean;
   pdfCount: number;
@@ -15,15 +13,11 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   onReset,
   onOpenSettings,
-  onExportBackup,
-  onImportBackup,
   onOpenBlocked,
   hasData,
   pdfCount,
   blockedCount
 }) => {
-  const backupInputRef = useRef<HTMLInputElement>(null);
-
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
@@ -54,21 +48,6 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            ref={backupInputRef}
-            type="file"
-            accept=".json"
-            className="hidden"
-            onClick={(e) => {
-              (e.target as HTMLInputElement).value = '';
-            }}
-            onChange={(e) => {
-              if (e.target.files && e.target.files[0]) {
-                onImportBackup(e.target.files[0]);
-              }
-            }}
-          />
-
           {blockedCount > 0 && onOpenBlocked && (
             <button
               onClick={onOpenBlocked}
@@ -79,26 +58,6 @@ export const Header: React.FC<HeaderProps> = ({
               Non Ordinabili ({blockedCount})
             </button>
           )}
-
-          {(hasData || blockedCount > 0) && (
-            <button
-              onClick={onExportBackup}
-              className="inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors"
-              title="Scarica sul PC una copia di sicurezza (.json) di tutti i dati e dell'archivio Non Ordinabili"
-            >
-              <HardDriveDownload className="w-3.5 h-3.5 mr-1.5 text-slate-600" />
-              Salva Backup
-            </button>
-          )}
-
-          <button
-            onClick={() => backupInputRef.current?.click()}
-            className="inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors"
-            title="Carica un file di backup (.json) salvato in precedenza"
-          >
-            <HardDriveUpload className="w-3.5 h-3.5 mr-1.5 text-slate-600" />
-            Carica Backup
-          </button>
 
           {hasData && (
             <button
