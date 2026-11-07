@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { CheckSquare, Square, Plus, Minus, Shirt, Info, Filter, CheckCheck, XCircle } from 'lucide-react';
 import { UnmatchedOrderItem } from '../types';
+import { isArticoloLibro } from '../constants/defaultMap';
 
 interface UnmatchedTableProps {
   items: UnmatchedOrderItem[];
@@ -14,6 +15,11 @@ function getMacroCollanaUnmatched(item: UnmatchedOrderItem): string {
   const coll = (item.collana || '').toUpperCase();
   const cod = (item.codiceBonelli || '').toUpperCase();
 
+  // 1. Tutti i libri (LIBRI TEX, LIBRI DYLAN DOG, LIBRI VARI, ecc.) raggruppati in un unico filtro "Libri"
+  if (isArticoloLibro(item.collana, item.codiceBonelli)) {
+    return 'Libri';
+  }
+
   if (cod.startsWith('TE') || coll.includes('TEX')) return 'Tex';
   if (cod.startsWith('DD') || cod.startsWith('BT') || coll.includes('DYLAN') || coll.includes('PAURA')) return 'Dylan Dog';
   if (cod.startsWith('ZE') || coll.includes('ZAGOR') || coll.includes('ZENITH')) return 'Zagor';
@@ -25,9 +31,12 @@ function getMacroCollanaUnmatched(item: UnmatchedOrderItem): string {
   if (cod.startsWith('NO') || coll.includes('MISTER NO')) return 'Mister No';
   if (
     cod.startsWith('VA02') ||
+    cod.startsWith('VA01') ||
     (item.misura && item.misura !== '-') ||
     coll.includes('TSHIRT') ||
     coll.includes('MAGLIET') ||
+    coll.includes('TAZZ') ||
+    coll.includes('PORTACHIAVI') ||
     cod.startsWith('PO')
   ) {
     return 'Magliette & Gadget';

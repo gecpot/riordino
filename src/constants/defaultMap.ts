@@ -79,6 +79,12 @@ export const MAPPA_PREDEFINITA: Record<string, string> = {
   "LIBRI SCARABEO": "SR01",
   "LIBRI MEDIATOON": "NA01",
   "LIBRI LE STORIE": "SE01",
+  "LIBRI DELCOURT": "DL01",
+  "LIBRI SUNNY COLA - CAPAREZZA": "SU02",
+  "LIBRI VASCO ROSSI": "VS02",
+  "LIBRI JULIA": "JU08",
+  "LIBRI KEN PARKER": "KE06",
+  "LIBRI MAGICO VENTO": "MV04",
   "TSHIRT": "VA02",
   "T-SHIRT": "VA02",
   "MAGLIETTE": "VA02",
@@ -90,3 +96,35 @@ export const MAPPA_PREDEFINITA: Record<string, string> = {
   "PORTACHIAVI NATHAN NEVER": "PONN",
   "PORTACHIAVI ZAGOR": "POZAG"
 };
+
+export const PREFISSI_LIBRI_SATO = new Set([
+  "2388", "AT02", "BA02", "BR04", "BT03", "CM01", "CN02", "CY03",
+  "DA07", "DC02", "DD20", "DD28", "DI02", "DL01", "DN04", "ET02",
+  "GE02", "IM01", "IM02", "JU08", "K 02", "KE06", "LI02", "LV02",
+  "ME02", "MM14", "MR02", "MV04", "MW03", "NA01", "NE02", "NN20",
+  "NO07", "NR02", "PT02", "QD02", "RC02", "RI04", "RN02", "RO06",
+  "RP02", "SC02", "SE04", "SI02", "SN02", "SQ02", "SR01", "SU02",
+  "TE30", "TO01", "UT02", "VA05", "VA06", "VI02", "VS02", "VV01", "ZE14"
+]);
+
+export function isArticoloLibro(collana: string, codiceOUscita: string, modello?: string): boolean {
+  const mod = (modello || '').trim().toUpperCase();
+  if (mod === 'LIBRO' || mod.includes('LIBR')) return true;
+
+  const coll = (collana || '').trim().toUpperCase();
+  if (
+    coll === 'LIBRI' ||
+    coll.startsWith('LIBRI ') ||
+    coll.startsWith('LIBRO ') ||
+    coll.includes(' LIBRI') ||
+    coll.includes('ROMANZI A FUMETTI')
+  ) {
+    return true;
+  }
+
+  const usc = (codiceOUscita || '').trim().toUpperCase();
+  const pref = usc.split('-')[0].trim();
+  if (pref && PREFISSI_LIBRI_SATO.has(pref)) return true;
+
+  return false;
+}

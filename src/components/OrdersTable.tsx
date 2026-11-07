@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { CheckSquare, Square, Plus, Minus, Shirt, Filter, CheckCheck, XCircle } from 'lucide-react';
 import { MatchedItem } from '../types';
+import { isArticoloLibro } from '../constants/defaultMap';
 
 interface OrdersTableProps {
   items: MatchedItem[];
@@ -14,6 +15,11 @@ export function getMacroCollana(item: MatchedItem): string {
   const coll = (item.collanaPdf || '').toUpperCase();
   const usc = (item.uscita || '').toUpperCase();
 
+  // 1. Tutti i libri (es. LIBRI TEX, LIBRI DYLAN DOG, LIBRI VARI, MODELLO=LIBRO, ecc.) in un unico filtro
+  if (isArticoloLibro(item.collanaPdf, item.uscita, item.modello)) {
+    return 'Libri';
+  }
+
   if (usc.startsWith('TE') || coll.includes('TEX')) return 'Tex';
   if (usc.startsWith('DD') || usc.startsWith('BT') || coll.includes('DYLAN')) return 'Dylan Dog';
   if (usc.startsWith('ZE') || coll.includes('ZAGOR') || coll.includes('ZENITH')) return 'Zagor';
@@ -23,7 +29,16 @@ export function getMacroCollana(item: MatchedItem): string {
   if (usc.startsWith('MM') || coll.includes('MYSTERE')) return 'Martin Mystère';
   if (usc.startsWith('DA') || coll.includes('DAMPYR')) return 'Dampyr';
   if (usc.startsWith('NO') || coll.includes('MISTER NO')) return 'Mister No';
-  if (usc.startsWith('VA02') || (item.taglia && item.taglia !== '-') || coll.includes('TSHIRT') || coll.includes('MAGLIET') || usc.startsWith('PO')) {
+  if (
+    usc.startsWith('VA02') ||
+    usc.startsWith('VA01') ||
+    (item.taglia && item.taglia !== '-') ||
+    coll.includes('TSHIRT') ||
+    coll.includes('MAGLIET') ||
+    coll.includes('TAZZ') ||
+    coll.includes('PORTACHIAVI') ||
+    usc.startsWith('PO')
+  ) {
     return 'Magliette & Gadget';
   }
 
