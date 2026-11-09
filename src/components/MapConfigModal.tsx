@@ -43,11 +43,21 @@ export const MapConfigModal: React.FC<MapConfigModalProps> = ({
 
   if (!isOpen) return null;
 
+  const saveCleanMap = (raw: Record<string, string>) => {
+    const clean: Record<string, string> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (k && v && v.trim()) {
+        clean[k] = v.trim().toUpperCase();
+      }
+    }
+    onSaveMap(clean);
+  };
+
   const handleUpdateCode = (collanaKey: string, newCode: string) => {
     const cleanCode = newCode.toUpperCase().replace(/[^A-Z0-9 ]/g, '');
     const updated = { ...currentMap, [collanaKey]: cleanCode };
     setCurrentMap(updated);
-    onSaveMap(updated);
+    saveCleanMap(updated);
     setJustSavedKey(collanaKey);
     setTimeout(() => {
       setJustSavedKey(prev => (prev === collanaKey ? null : prev));
@@ -60,7 +70,7 @@ export const MapConfigModal: React.FC<MapConfigModalProps> = ({
     if (!k || !v) return;
     const updated = { ...currentMap, [k]: v };
     setCurrentMap(updated);
-    onSaveMap(updated);
+    saveCleanMap(updated);
     setNewKey('');
     setNewVal('');
     setSearch(k);
@@ -70,7 +80,7 @@ export const MapConfigModal: React.FC<MapConfigModalProps> = ({
     const copy = { ...currentMap };
     delete copy[key];
     setCurrentMap(copy);
-    onSaveMap(copy);
+    saveCleanMap(copy);
   };
 
   const handleResetDefaults = () => {

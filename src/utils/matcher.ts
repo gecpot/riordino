@@ -36,7 +36,8 @@ export function ricavaPrefissoBonelli(collanaPdf: string, mappaCollane: Record<s
   if (!upper) return '';
   if (mappaCollane[upper]) return mappaCollane[upper];
 
-  // Cerca anche ignorando differenze di spazi, trattini o punteggiatura
+  // Cerca solo corrispondenza esatta del nome collana (ignorando differenze di spazi o trattini),
+  // SENZA tirare a indovinare per parola chiave (così non assegna mai un codice sbagliato!)
   const normUpper = normalizzaTesto(upper);
   if (normUpper) {
     for (const [k, v] of Object.entries(mappaCollane)) {
@@ -46,35 +47,82 @@ export function ricavaPrefissoBonelli(collanaPdf: string, mappaCollane: Record<s
     }
   }
 
-  // Fallback intelligente per collane non mappate esplicitamente
-  if (upper.includes('40 ANNI') && (upper.includes('PAURA') || upper.includes('DYLAN') || upper.includes('DYD'))) return 'DD50';
-  if (upper.includes('ALMANACCO DELLA PAURA')) return 'DD02';
-  if (upper.includes('DYLAN DOG SUPER BOOK')) return 'DD05';
-  if (upper.includes('DYLAN DOG')) return 'DD01';
-  if (upper.includes('TEX NUOVA RISTAMPA')) return 'TE04';
-  if (upper.includes('TEX TRE STELLE')) return 'TE03';
-  if (upper.includes('TEX WILLER')) return 'TE33';
-  if (upper.includes('TEX CLASSIC')) return 'TE32';
-  if (upper.includes('TEX')) return 'TE01';
-  if (upper.includes('ZAGOR') || upper.includes('ZENITH')) return 'ZE01';
-  if (upper.includes('DRAGONERO')) return 'DN01';
-  if (upper.includes('JULIA')) return 'JU01';
-  if (upper.includes('NATHAN NEVER')) return 'NN01';
-  if (upper.includes('MARTIN MYSTERE')) return 'MM01';
-  if (upper.includes('DAMPYR')) return 'DA02';
-  if (upper.includes('MISTER NO')) return 'NO01';
-  if (upper.includes('MORGAN LOST')) return 'ML01';
-  if (upper.includes('MAGICO VENTO')) return 'MV01';
-  if (upper.includes('GEA')) return 'GE02';
-  if (upper.includes('STORIE')) return 'SE01';
-  if (upper.includes('CONFINE')) return 'CN02';
-  if (upper.includes('SCARABEO')) return 'SR01';
-  if (upper.includes('NERO')) return 'NE02';
-  if (upper.includes('NICK')) return 'NI09';
-  if (upper.includes('TSHIRT') || upper.includes('T-SHIRT') || upper.includes('MAGLIET')) return 'VA02';
-  if (upper.includes('TAZZ')) return 'VA01';
-
   return '';
+}
+
+const COLLANE_CONTENITORE_GENERICO = new Set([
+  'VARIE',
+  'PANINI',
+  'LIBRI VARI',
+  'VARIANT'
+]);
+
+/**
+ * Analizza i PDF e il file Sato.csv per recuperare in automatico SOLO i prefissi
+ * di cui c'è certezza matematica al 100% (corrispondenza univoca su titolo + numero + unanimità).
+ */
+export function scopriPrefissiCertiDaCsv(
+  articoliPdf: PdfRow[],
+  satoRows: PreparedSatoRow[]
+): Record<string, string> {
+  if (satoRows.length === 0 || articoliPdf.length === 0) return {};
+
+  const prefixesByCollana = new Map<string, Set<string>>();
+
+  for (const item of articoliPdf) {
+    if (item.isPanini) continue;
+    const coll = (item.collana || '').trim().toUpperCase();
+    if (!coll || COLLANE_CONTENITORE_GENERICO.has(coll)) continue;
+
+    const normTit = normalizzaTesto(item.titolo);
+    const numCod = estraiNumeroAlbo(item.codice);
+    const prezzoPdf = normalizzaPrezzo(item.prezzoVendita);
+    if (!normTit) continue;
+
+    // 1. Match rigoroso: stesso identico titolo normalizzato E stesso identico numero albo
+    let cands = satoRows.filter(
+      r =>
+        r.normArticolo === normTit &&
+        r.numUscita === numCod &&
+        r.uscita.includes('-') &&
+        (prezzoPdf === null || r.numPrezzo === null || r.numPrezzo === prezzoPdf)
+    );
+
+    // 2. Per i libri/volumi (dove il codice PDF è un codice interno a 4-5 cifre):
+    // richiede titolo lungo (>= 12 caratteri) che compaia UNA SOLA VOLTA in tutto Sato.csv
+    if (cands.length === 0 && normTit.length >= 12) {
+      const exactTitleRows = satoRows.filter(
+        r =>
+          r.normArticolo === normTit &&
+          r.uscita.includes('-') &&
+          (prezzoPdf === null || r.numPrezzo === null || r.numPrezzo === prezzoPdf)
+      );
+      const uniquePrefixes = new Set(exactTitleRows.map(r => r.uscita.split('-')[0].trim()));
+      if (uniquePrefixes.size === 1) {
+        cands = exactTitleRows;
+      }
+    }
+
+    if (cands.length > 0) {
+      if (!prefixesByCollana.has(coll)) {
+        prefixesByCollana.set(coll, new Set());
+      }
+      const set = prefixesByCollana.get(coll)!;
+      for (const c of cands) {
+        const pref = c.uscita.split('-')[0].trim();
+        if (pref) set.add(pref);
+      }
+    }
+  }
+
+  // Accetta il prefisso SOLO se c'è unanimità totale (1 solo prefisso trovato senza alcuna ambiguità)
+  const certi: Record<string, string> = {};
+  for (const [coll, prefSet] of prefixesByCollana.entries()) {
+    if (prefSet.size === 1) {
+      certi[coll] = Array.from(prefSet)[0];
+    }
+  }
+  return certi;
 }
 
 export function generaCodiceBonelli(

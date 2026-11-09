@@ -10,7 +10,7 @@ import { PaniniTable } from './components/PaniniTable';
 import { NonOrdinabiliTable } from './components/NonOrdinabiliTable';
 import { MapConfigModal } from './components/MapConfigModal';
 import { parsePdfBatch, readFileToArrayBuffer } from './utils/pdfParser';
-import { prepareSatoRows, abbinaArticoli, PreparedSatoRow } from './utils/matcher';
+import { prepareSatoRows, abbinaArticoli, scopriPrefissiCertiDaCsv, PreparedSatoRow } from './utils/matcher';
 import { generaCsvAggiornato, downloadBlob } from './utils/csvExporter';
 import { generaReportNonTrovatiTxt, generaCsvOrdineMail } from './utils/txtExporter';
 import {
@@ -106,16 +106,35 @@ export function App() {
     return prepareSatoRows(csvData?.rows || []);
   }, [csvData]);
 
+  // Scopre automaticamente dal file Sato.csv solo i prefissi certi al 100% (senza mai indovinare)
+  const prefissiCertiDaCsv = useMemo(() => {
+    return scopriPrefissiCertiDaCsv(allPdfRows, preparedSatoRows);
+  }, [allPdfRows, preparedSatoRows]);
+
+  // Mappa collane attiva: unisce predefiniti verificati + scoperti certi da CSV + modifiche manuali
+  const mappaCollaneAttiva = useMemo(() => {
+    const merged: Record<string, string> = {
+      ...MAPPA_PREDEFINITA,
+      ...prefissiCertiDaCsv
+    };
+    for (const [k, v] of Object.entries(mappaCollane)) {
+      if (v && v.trim()) {
+        merged[k] = v.trim();
+      }
+    }
+    return merged;
+  }, [prefissiCertiDaCsv, mappaCollane]);
+
   // Calcola il risultato dell'abbinamento e delle somme (filtrando i Non Ordinabili dalla Mail)
   const matchResult: MatchResult | null = useMemo(() => {
     if (allPdfRows.length === 0) return null;
     try {
-      return abbinaArticoli(allPdfRows, preparedSatoRows, mappaCollane, overrides, nonOrdinabili);
+      return abbinaArticoli(allPdfRows, preparedSatoRows, mappaCollaneAttiva, overrides, nonOrdinabili);
     } catch (err: any) {
       console.error('Errore calcolo abbinamenti:', err);
       return null;
     }
-  }, [allPdfRows, preparedSatoRows, mappaCollane, overrides, nonOrdinabili]);
+  }, [allPdfRows, preparedSatoRows, mappaCollaneAttiva, overrides, nonOrdinabili]);
 
   const nonOrdinabiliList = useMemo(() => {
     return Object.values(nonOrdinabili).sort((a, b) => {
@@ -512,8 +531,9 @@ export function App() {
   const pdfCollaneList = useMemo(() => {
     const set = new Set<string>();
     for (const r of allPdfRows) {
-      if (r.collana && !r.isPanini) {
-        set.add(r.collana.trim().toUpperCase());
+      const c = (r.collana || '').trim().toUpperCase();
+      if (c && !r.isPanini && c !== 'PANINI' && c !== 'VARIE') {
+        set.add(c);
       }
     }
     return Array.from(set);
@@ -722,7 +742,7 @@ export function App() {
       <MapConfigModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        mapData={mappaCollane}
+        mapData={mappaCollaneAttiva}
         pdfCollane={pdfCollaneList}
         onSaveMap={handleSaveMap}
       />
