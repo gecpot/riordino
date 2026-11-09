@@ -499,6 +499,26 @@ export function App() {
     }
   };
 
+  // Aggiornamento rapido del prefisso di una singola collana direttamente dalla riga della tabella
+  const handleUpdateCollanaPrefix = (collanaPdf: string, newPrefix: string) => {
+    const key = (collanaPdf || '').trim().toUpperCase();
+    const val = (newPrefix || '').trim().toUpperCase();
+    if (!key || !val) return;
+    const nextMap = { ...mappaCollane, [key]: val };
+    handleSaveMap(nextMap);
+  };
+
+  // Elenco di tutte le collane presenti nei PDF caricati (per mostrarle automaticamente in Mappa Collane)
+  const pdfCollaneList = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of allPdfRows) {
+      if (r.collana && !r.isPanini) {
+        set.add(r.collana.trim().toUpperCase());
+      }
+    }
+    return Array.from(set);
+  }, [allPdfRows]);
+
   const hasData = pdfBatches.length > 0 || !!csvData;
 
   return (
@@ -657,6 +677,7 @@ export function App() {
                 onToggleExclude={handleToggleExclude}
                 onUpdateQuantity={handleUpdateQuantity}
                 onBulkExclude={handleBulkExclude}
+                onUpdateCollanaPrefix={handleUpdateCollanaPrefix}
                 searchQuery={searchQuery}
               />
             )}
@@ -670,6 +691,7 @@ export function App() {
                 onMarkNonOrdinabile={handleMarkNonOrdinabile}
                 onBulkMarkNonOrdinabile={handleBulkMarkNonOrdinabile}
                 onBulkExclude={handleBulkExclude}
+                onUpdateCollanaPrefix={handleUpdateCollanaPrefix}
                 searchQuery={searchQuery}
               />
             )}
@@ -701,6 +723,7 @@ export function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         mapData={mappaCollane}
+        pdfCollane={pdfCollaneList}
         onSaveMap={handleSaveMap}
       />
     </div>

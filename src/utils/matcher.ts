@@ -36,7 +36,18 @@ export function ricavaPrefissoBonelli(collanaPdf: string, mappaCollane: Record<s
   if (!upper) return '';
   if (mappaCollane[upper]) return mappaCollane[upper];
 
+  // Cerca anche ignorando differenze di spazi, trattini o punteggiatura
+  const normUpper = normalizzaTesto(upper);
+  if (normUpper) {
+    for (const [k, v] of Object.entries(mappaCollane)) {
+      if (normalizzaTesto(k) === normUpper && v) {
+        return v;
+      }
+    }
+  }
+
   // Fallback intelligente per collane non mappate esplicitamente
+  if (upper.includes('40 ANNI') && (upper.includes('PAURA') || upper.includes('DYLAN') || upper.includes('DYD'))) return 'DD50';
   if (upper.includes('ALMANACCO DELLA PAURA')) return 'DD02';
   if (upper.includes('DYLAN DOG SUPER BOOK')) return 'DD05';
   if (upper.includes('DYLAN DOG')) return 'DD01';

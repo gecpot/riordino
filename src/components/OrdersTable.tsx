@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CheckSquare, Square, Plus, Minus, Shirt, Filter, CheckCheck, XCircle } from 'lucide-react';
+import { CheckSquare, Square, Plus, Minus, Shirt, Filter, CheckCheck, XCircle, Pencil, Check, X } from 'lucide-react';
 import { MatchedItem } from '../types';
 import { isArticoloLibro } from '../constants/defaultMap';
 
@@ -8,6 +8,7 @@ interface OrdersTableProps {
   onToggleExclude: (id: string) => void;
   onUpdateQuantity: (id: string, newQta: number) => void;
   onBulkExclude?: (ids: string[], escluso: boolean) => void;
+  onUpdateCollanaPrefix?: (collanaPdf: string, newPrefix: string) => void;
   searchQuery: string;
 }
 
@@ -50,9 +51,26 @@ export const OrdersTable: React.FC<OrdersTableProps> = ({
   onToggleExclude,
   onUpdateQuantity,
   onBulkExclude,
+  onUpdateCollanaPrefix,
   searchQuery
 }) => {
   const [selectedCollana, setSelectedCollana] = useState<string | null>(null);
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [editPrefixValue, setEditPrefixValue] = useState<string>('');
+
+  const handleStartEditPrefix = (item: MatchedItem) => {
+    setEditingRowId(item.id);
+    const currentPref = (item.uscita || '').split('-')[0] || '';
+    setEditPrefixValue(currentPref);
+  };
+
+  const handleSaveEditPrefix = (collana: string) => {
+    const clean = editPrefixValue.trim().toUpperCase();
+    if (clean && onUpdateCollanaPrefix) {
+      onUpdateCollanaPrefix(collana, clean);
+    }
+    setEditingRowId(null);
+  };
 
   // Calcola le categorie e i relativi conteggi
   const collanaStats = useMemo(() => {
@@ -307,9 +325,48 @@ export const OrdersTable: React.FC<OrdersTableProps> = ({
                         {item.qtaVenduta}
                       </td>
 
-                      {/* USCITA SATO */}
+                      {/* USCITA SATO (CLICCABILE PER MODIFICARE IL PREFISSO DELLA COLLANA PDF) */}
                       <td className="py-1 px-2 font-mono font-semibold text-slate-900 whitespace-nowrap">
-                        {item.uscita}
+                        {editingRowId === item.id ? (
+                          <div className="inline-flex items-center space-x-1">
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Es. DD50"
+                              value={editPrefixValue}
+                              onChange={(e) => setEditPrefixValue(e.target.value.toUpperCase())}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveEditPrefix(item.collanaPdf);
+                                if (e.key === 'Escape') setEditingRowId(null);
+                              }}
+                              className="w-16 px-1.5 py-0.5 text-xs font-mono font-bold uppercase rounded border border-emerald-500 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            />
+                            <button
+                              onClick={() => handleSaveEditPrefix(item.collanaPdf)}
+                              className="p-1 rounded bg-emerald-600 text-white hover:bg-emerald-700"
+                              title={`Salva prefisso per la collana "${item.collanaPdf}"`}
+                            >
+                              <Check className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => setEditingRowId(null)}
+                              className="p-1 rounded bg-slate-200 text-slate-600 hover:bg-slate-300"
+                              title="Annulla"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditPrefix(item)}
+                            title={`Clicca per cambiare il prefisso della collana "${item.collanaPdf}"`}
+                            className="group inline-flex items-center space-x-1 px-1.5 py-0.5 rounded hover:bg-slate-100 transition-colors"
+                          >
+                            <span>{item.uscita}</span>
+                            <Pencil className="w-2.5 h-2.5 opacity-30 group-hover:opacity-100 text-slate-600 shrink-0" />
+                          </button>
+                        )}
                       </td>
 
                       {/* ARTICOLO + EVENTUALE TAGLIA/VARIANTE INLINE */}

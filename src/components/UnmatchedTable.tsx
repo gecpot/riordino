@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CheckSquare, Square, Plus, Minus, Shirt, Info, Filter, CheckCheck, XCircle, Ban } from 'lucide-react';
+import { CheckSquare, Square, Plus, Minus, Shirt, Info, Filter, CheckCheck, XCircle, Ban, Pencil, Check, X } from 'lucide-react';
 import { UnmatchedOrderItem } from '../types';
 import { isArticoloLibro } from '../constants/defaultMap';
 
@@ -10,6 +10,7 @@ interface UnmatchedTableProps {
   onMarkNonOrdinabile: (item: UnmatchedOrderItem) => void;
   onBulkMarkNonOrdinabile?: (items: UnmatchedOrderItem[]) => void;
   onBulkExclude?: (ids: string[], escluso: boolean) => void;
+  onUpdateCollanaPrefix?: (collanaPdf: string, newPrefix: string) => void;
   searchQuery: string;
 }
 
@@ -54,9 +55,25 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
   onMarkNonOrdinabile,
   onBulkMarkNonOrdinabile,
   onBulkExclude,
+  onUpdateCollanaPrefix,
   searchQuery
 }) => {
   const [selectedCollana, setSelectedCollana] = useState<string | null>(null);
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [editPrefixValue, setEditPrefixValue] = useState<string>('');
+
+  const handleStartEditPrefix = (item: UnmatchedOrderItem) => {
+    setEditingRowId(item.id);
+    setEditPrefixValue(item.prefissoSato || '');
+  };
+
+  const handleSaveEditPrefix = (collana: string) => {
+    const clean = editPrefixValue.trim().toUpperCase();
+    if (clean && onUpdateCollanaPrefix) {
+      onUpdateCollanaPrefix(collana, clean);
+    }
+    setEditingRowId(null);
+  };
 
   const collanaStats = useMemo(() => {
     const counts: Record<string, { total: number; attivi: number; qta: number }> = {};
@@ -210,7 +227,7 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
           <Info className="w-3.5 h-3.5 text-amber-700 shrink-0" />
           <div>
             <span className="font-semibold">Ordine via Mail (Fuori Catalogo CSV): </span>
-            Usa <strong>SÌ / NO</strong> e <strong>+ / -</strong> per scegliere cosa ordinare oggi, oppure <strong>Non ord.</strong> per nascondere per sempre i titoli esauriti.
+            Usa <strong>SÌ / NO</strong> e <strong>+ / -</strong> per scegliere cosa ordinare, clicca sul <strong>Codice (✏️)</strong> per correggere la sigla di una collana (es. <span className="font-mono font-bold">DD50</span>), o clicca <strong>Non ord.</strong> per i titoli esauriti.
           </div>
         </div>
 
@@ -321,19 +338,54 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
                         {item.qtaVenduta}
                       </td>
 
-                      {/* CODICE BONELLI (ES. DD01-039) */}
+                      {/* CODICE BONELLI (ES. DD01-039) CLICCABILE PER CAMBIARE PREFISSO COLLANA */}
                       <td className="py-1 px-2 whitespace-nowrap">
-                        <span
-                          className={`inline-block font-mono font-bold px-1.5 py-0 rounded text-xs ${
-                            isExcluded
-                              ? 'bg-slate-100 text-slate-400'
-                              : item.prefissoSato
-                              ? 'bg-amber-100/80 text-amber-900 border border-amber-200'
-                              : 'bg-slate-100 text-slate-700 border border-slate-200'
-                          }`}
-                        >
-                          {item.codiceBonelli}
-                        </span>
+                        {editingRowId === item.id ? (
+                          <div className="inline-flex items-center space-x-1">
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Es. DD50"
+                              value={editPrefixValue}
+                              onChange={(e) => setEditPrefixValue(e.target.value.toUpperCase())}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveEditPrefix(item.collana);
+                                if (e.key === 'Escape') setEditingRowId(null);
+                              }}
+                              className="w-16 px-1.5 py-0.5 text-xs font-mono font-bold uppercase rounded border border-amber-500 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                            />
+                            <button
+                              onClick={() => handleSaveEditPrefix(item.collana)}
+                              className="p-1 rounded bg-emerald-600 text-white hover:bg-emerald-700"
+                              title={`Salva prefisso per tutta la collana "${item.collana}"`}
+                            >
+                              <Check className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => setEditingRowId(null)}
+                              className="p-1 rounded bg-slate-200 text-slate-600 hover:bg-slate-300"
+                              title="Annulla"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditPrefix(item)}
+                            title={`Clicca per cambiare il codice della collana "${item.collana}" (es. DD50)`}
+                            className={`group inline-flex items-center space-x-1 font-mono font-bold px-1.5 py-0.5 rounded text-xs transition-colors ${
+                              isExcluded
+                                ? 'bg-slate-100 text-slate-400'
+                                : item.prefissoSato
+                                ? 'bg-amber-100/80 text-amber-900 hover:bg-amber-200 border border-amber-200'
+                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
+                            }`}
+                          >
+                            <span>{item.codiceBonelli}</span>
+                            <Pencil className="w-2.5 h-2.5 opacity-40 group-hover:opacity-100 text-amber-800 shrink-0" />
+                          </button>
+                        )}
                       </td>
 
                       {/* TITOLO + EVENTUALE TAGLIA/COLORE INLINE */}
