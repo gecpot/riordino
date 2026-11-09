@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CheckSquare, Square, Plus, Minus, Shirt, Info, Filter, CheckCheck, XCircle, Ban, Pencil, Check, X } from 'lucide-react';
+import { CheckSquare, Square, Plus, Minus, Shirt, Info, Filter, CheckCheck, XCircle, Ban, Pencil, Check, X, AlertTriangle } from 'lucide-react';
 import { UnmatchedOrderItem } from '../types';
 import { isArticoloLibro } from '../constants/defaultMap';
 
@@ -91,9 +91,15 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
     return Object.entries(counts).sort((a, b) => b[1].total - a[1].total);
   }, [items]);
 
+  const missingCodeCount = useMemo(() => {
+    return items.filter(it => !it.prefissoSato).length;
+  }, [items]);
+
   const filtered = useMemo(() => {
     return items.filter(it => {
-      if (selectedCollana !== null && getMacroCollanaUnmatched(it) !== selectedCollana) {
+      if (selectedCollana === '__MISSING_CODE__') {
+        if (it.prefissoSato) return false;
+      } else if (selectedCollana !== null && getMacroCollanaUnmatched(it) !== selectedCollana) {
         return false;
       }
       if (!searchQuery.trim()) return true;
@@ -122,6 +128,35 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
 
   return (
     <div className="space-y-3">
+      {/* BANNER EVIDENTE SE CI SONO ARTICOLI SENZA CODICE COLLANA */}
+      {missingCodeCount > 0 && (
+        <div className="p-3 rounded-xl bg-rose-50 border-2 border-rose-400 text-rose-950 text-xs flex flex-wrap items-center justify-between gap-2 shadow-sm">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+            <div>
+              <span className="font-bold">
+                Attenzione: {missingCodeCount} {missingCodeCount === 1 ? 'articolo non ha' : 'articoli non hanno'} ancora il codice collana!
+              </span>{' '}
+              Sono evidenziati in <strong>rosso</strong> in cima alla tabella: clicca su{' '}
+              <span className="font-mono font-bold bg-rose-600 text-white px-1.5 py-0.5 rounded text-[10px]">
+                MANCA CODICE ✏️
+              </span>{' '}
+              sulla riga per inserire la sigla corretta.
+            </div>
+          </div>
+          <button
+            onClick={() =>
+              setSelectedCollana(selectedCollana === '__MISSING_CODE__' ? null : '__MISSING_CODE__')
+            }
+            className="px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 transition-colors shrink-0"
+          >
+            {selectedCollana === '__MISSING_CODE__'
+              ? 'Mostra Tutti'
+              : `Filtra Senza Codice (${missingCodeCount})`}
+          </button>
+        </div>
+      )}
+
       {/* FILTRI PER COLLANA */}
       {items.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
@@ -183,6 +218,22 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
             >
               TUTTE ({items.length})
             </button>
+
+            {missingCodeCount > 0 && (
+              <button
+                onClick={() =>
+                  setSelectedCollana(selectedCollana === '__MISSING_CODE__' ? null : '__MISSING_CODE__')
+                }
+                className={`inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  selectedCollana === '__MISSING_CODE__'
+                    ? 'bg-rose-600 text-white shadow-sm ring-2 ring-rose-300'
+                    : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5 mr-1" />
+                <span>Senza Codice ({missingCodeCount})</span>
+              </button>
+            )}
 
             {collanaStats.map(([nomeCollana, stats]) => {
               const isSelected = selectedCollana === nomeCollana;
@@ -257,6 +308,7 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
               ) : (
                 filtered.map((item) => {
                   const isExcluded = item.escluso;
+                  const isMissingCode = !item.prefissoSato;
                   const hasTaglia = !!item.misura && item.misura !== '-';
                   const hasColore = !!item.colore && item.colore !== '-';
 
@@ -266,6 +318,8 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
                       className={`transition-colors ${
                         isExcluded
                           ? 'bg-slate-50/70 text-slate-400 opacity-60'
+                          : isMissingCode
+                          ? 'bg-rose-50/90 hover:bg-rose-100/80 border-l-4 border-l-rose-600'
                           : 'hover:bg-amber-50/40'
                       }`}
                     >
@@ -369,6 +423,17 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
                               <X className="w-3 h-3" />
                             </button>
                           </div>
+                        ) : isMissingCode ? (
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditPrefix(item)}
+                            title={`ATTENZIONE: Manca il codice per la collana "${item.collana}". Clicca qui per inserirlo!`}
+                            className="inline-flex items-center space-x-1 font-mono font-bold px-2 py-0.5 rounded text-[11px] bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition-colors"
+                          >
+                            <AlertTriangle className="w-3 h-3 shrink-0" />
+                            <span>MANCA CODICE (#{item.codice})</span>
+                            <Pencil className="w-2.5 h-2.5 shrink-0 ml-0.5" />
+                          </button>
                         ) : (
                           <button
                             type="button"
@@ -377,9 +442,7 @@ export const UnmatchedTable: React.FC<UnmatchedTableProps> = ({
                             className={`group inline-flex items-center space-x-1 font-mono font-bold px-1.5 py-0.5 rounded text-xs transition-colors ${
                               isExcluded
                                 ? 'bg-slate-100 text-slate-400'
-                                : item.prefissoSato
-                                ? 'bg-amber-100/80 text-amber-900 hover:bg-amber-200 border border-amber-200'
-                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
+                                : 'bg-amber-100/80 text-amber-900 hover:bg-amber-200 border border-amber-200'
                             }`}
                           >
                             <span>{item.codiceBonelli}</span>

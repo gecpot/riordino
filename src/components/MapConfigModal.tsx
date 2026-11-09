@@ -97,8 +97,12 @@ export const MapConfigModal: React.FC<MapConfigModalProps> = ({
       const q = search.trim().toLowerCase();
       return k.toLowerCase().includes(q) || (v || '').toLowerCase().includes(q);
     })
-    .sort(([a], [b]) => {
-      // Mette in cima le collane presenti nei PDF caricati della settimana
+    .sort(([a, va], [b, vb]) => {
+      // 1. Mette in assoluto per prime le collane senza codice
+      const aEmpty = !va || !va.trim() ? 0 : 1;
+      const bEmpty = !vb || !vb.trim() ? 0 : 1;
+      if (aEmpty !== bEmpty) return aEmpty - bEmpty;
+      // 2. Poi quelle presenti nei PDF caricati della settimana
       const aInPdf = pdfCollaneSet.has(a) ? 0 : 1;
       const bInPdf = pdfCollaneSet.has(b) ? 0 : 1;
       if (aInPdf !== bInPdf) return aInPdf - bInPdf;
@@ -167,18 +171,26 @@ export const MapConfigModal: React.FC<MapConfigModalProps> = ({
             filteredEntries.map(([k, v]) => {
               const isInPdf = pdfCollaneSet.has(k);
               const isSaved = justSavedKey === k;
+              const isEmpty = !v || !v.trim();
 
               return (
                 <div
                   key={k}
                   className={`flex items-center justify-between px-3 py-1.5 rounded-xl text-xs border transition-colors ${
-                    isInPdf
+                    isEmpty
+                      ? 'bg-rose-50 border-rose-300 hover:bg-rose-100/70'
+                      : isInPdf
                       ? 'bg-emerald-50/50 border-emerald-200/80 hover:bg-emerald-50'
                       : 'bg-slate-50 border-slate-100 hover:bg-slate-100/80'
                   }`}
                 >
                   <div className="flex items-center flex-wrap gap-1.5 pr-2">
-                    <span className="font-semibold text-slate-800">{k}</span>
+                    <span className={`font-semibold ${isEmpty ? 'text-rose-900' : 'text-slate-800'}`}>{k}</span>
+                    {isEmpty && (
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-600 text-white">
+                        Manca codice
+                      </span>
+                    )}
                     {isInPdf && (
                       <span className="px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
                         Nel PDF
@@ -195,9 +207,13 @@ export const MapConfigModal: React.FC<MapConfigModalProps> = ({
                     <input
                       type="text"
                       value={v}
-                      placeholder="Codice..."
+                      placeholder="Inserisci..."
                       onChange={(e) => handleUpdateCode(k, e.target.value)}
-                      className="w-20 text-center font-mono font-bold text-xs px-2 py-1 rounded-lg border border-slate-300 bg-white text-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 uppercase"
+                      className={`w-24 text-center font-mono font-bold text-xs px-2 py-1 rounded-lg border bg-white focus:outline-none focus:ring-2 uppercase ${
+                        isEmpty
+                          ? 'border-rose-400 text-rose-700 placeholder:text-rose-400 focus:ring-rose-500'
+                          : 'border-slate-300 text-amber-800 focus:ring-amber-500'
+                      }`}
                       title={`Scrivi qui il prefisso per "${k}" (es. DD50, TE01)`}
                     />
                     <button

@@ -432,6 +432,7 @@ export function abbinaArticoli(
     });
 
   // Applica gli overrides (escluso e qtaDelta) agli articoli Unmatched (Ordine Mail)
+  // Mettendo SEMPRE in cima gli eventuali articoli senza prefisso (così saltano subito all'occhio)
   const unmatched = Array.from(unmatchedMap.values())
     .map(u => {
       const ov = overrides[u.id];
@@ -441,6 +442,9 @@ export function abbinaArticoli(
       return { ...u, escluso, qtaOrdine };
     })
     .sort((a, b) => {
+      const aMissing = !a.prefissoSato ? 0 : 1;
+      const bMissing = !b.prefissoSato ? 0 : 1;
+      if (aMissing !== bMissing) return aMissing - bMissing;
       if (a.codiceBonelli < b.codiceBonelli) return -1;
       if (a.codiceBonelli > b.codiceBonelli) return 1;
       return a.titolo.localeCompare(b.titolo);
